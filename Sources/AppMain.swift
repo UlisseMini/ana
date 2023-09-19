@@ -3,12 +3,12 @@ import Foundation
 import OpenAI
 
 func getActiveWindow() -> [String: Any]? {
-  if let frontmostApp = NSWorkspace.shared.frontmostApplication {
+    if let frontmostApp = NSWorkspace.shared.frontmostApplication {
         let frontmostAppPID = frontmostApp.processIdentifier
-        
+
         let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
         let windowListInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as! [[String: Any]]
-        
+
         for window in windowListInfo {
             if let ownerPID = window[kCGWindowOwnerPID as String] as? Int, ownerPID == frontmostAppPID {
                 return window
@@ -41,18 +41,18 @@ struct ContentView: View {
     var body: some View {
         VStack {
             Text((activeWindow != nil ? showWindow(activeWindow!) : "No window"))
-                .onAppear {
-                  requestScreenRecordingPermission()
-                    Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                        activeWindow = getActiveWindow()
-                    }
-                                    }
-                .font(.system(size: 20))
+            .onAppear {
+                requestScreenRecordingPermission()
+                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+                    activeWindow = getActiveWindow()
+                }
+            }
+            .font(.system(size: 20))
         }
         .frame(width: 400, height: 200)
         .padding()
     }
-    
+
 }
 
 @main
