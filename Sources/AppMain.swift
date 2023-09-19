@@ -134,7 +134,7 @@ struct ContentView: View {
                 Task {
                     // has possible race condition but who the fuck cares
                     while NSApp.windows.isEmpty {
-                        await try Task.sleep(nanoseconds: 100 * 1_000_000)
+                        try await Task.sleep(nanoseconds: 100 * 1_000_000)
                     }
                     let window = NSApp.windows[0]
                     centerWindow(window: window)
@@ -146,7 +146,7 @@ struct ContentView: View {
                 // TODO: Make sure this is only spawned once.
                 Task {
                     while true {
-                        await try Task.sleep(nanoseconds: 1 * 1_000_000_000)
+                        try await Task.sleep(nanoseconds: 1 * 1_000_000_000)
                         if activeWindow == nil || preferences == "" {
                             print("activeWindow is null or unchanged")
                             continue;
@@ -179,7 +179,7 @@ struct ContentView: View {
 
                         print("chatText: \(chatText)")
 
-                        await try Task.sleep(nanoseconds: UInt64(checkInInterval) * 1_000_000_000)
+                        try await Task.sleep(nanoseconds: UInt64(checkInInterval) * 1_000_000_000)
                     }
                 }
             }
