@@ -2,18 +2,25 @@ all: buildapp
 
 # build app to BossGPT.app
 # @cp -f icon.icns BossGPT.app/Contents/Resources/icon.icns
-buildapp: build Info.plist
+buildapp: release Info.plist
 	mkdir -p BossGPT.app/Contents/MacOS
 	cp -f BossGPT BossGPT.app/Contents/MacOS/BossGPT
 	cp -f Info.plist BossGPT.app/Contents/Info.plist
 	mkdir -p BossGPT.app/Contents/Resources # donno if emptydir helps
 	chmod +x BossGPT.app/Contents/MacOS/BossGPT
-	codesign -s "Apple Development" BossGPT.app
+	codesign -s "Apple Development" BossGPT.app || true
 
+
+release:
+	$(MAKE) build TARGET=release
+
+debug:
+	$(MAKE) build TARGET=debug
 
 build:
-	swift build -c release
-	cp -f .build/arm64-apple-macosx/release/bossgpt-swift BossGPT
+	swift build -c $(TARGET)
+	cp -f .build/arm64-apple-macosx/$(TARGET)/bossgpt-swift BossGPT
+	codesign -s "Apple Development" BossGPT || true
 
 
 Info.plist: Info.plist.template
@@ -26,10 +33,8 @@ Info.plist: Info.plist.template
 	fi
 
 
-DEV_BIN=.build/arm64-apple-macosx/debug/bossgpt-swift
-
 dev:
-	find Sources Package.swift | entr -rc sh -c "swift build && $(DEV_BIN)"
+	find Sources Package.swift | entr -rc sh -c "make debug -s && ./BossGPT"
 
 
 .PHONY: all build buildapp

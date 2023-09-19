@@ -4,6 +4,11 @@ BossGPT.app
 todo
 .env
 
+# apple shit
+_CodeSignature
+Info.plist
+
+
 # other
 .DS_Store
 /.build
