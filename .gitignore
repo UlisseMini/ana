@@ -2,6 +2,7 @@
 BossGPT
 BossGPT.app
 todo
+.env
 
 # other
 .DS_Store

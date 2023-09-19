@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import OpenAI
 
 func getActiveWindow() -> [String: Any]? {
   if let frontmostApp = NSWorkspace.shared.frontmostApplication {
@@ -35,6 +36,7 @@ let showWindow = { (window: [String: Any]) -> String in
 
 struct ContentView: View {
     @State private var activeWindow: [String: Any]? = nil
+    @State private var openAI = OpenAI(apiToken: ProcessInfo.processInfo.environment["OPENAI_API_KEY"]!)
 
     var body: some View {
         VStack {
@@ -51,11 +53,5 @@ struct ContentView: View {
         .padding()
     }
     
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
 }
 
