@@ -111,14 +111,19 @@ let trim = { (s: String) -> String in
     return s.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+func nextCheckInIn(_ checkInInterval: Double, _ lastCheckInTime: Int) -> Int {
+    return  Int(checkInInterval) + lastCheckInTime - Int(Date().timeIntervalSince1970)
+}
+
 
 struct ContentView: View {
     @State private var activeWindow: [String: Any]? = nil
     @State private var openAI = OpenAI(apiToken: ProcessInfo.processInfo.environment["OPENAI_API_KEY"]!)
     @State private var chatText = "Loading chat text..."
-    @State private var preferences = "I want to be focused coding right now";
-    @State private var checkInInterval: Double = 60;
-    @State private var encourageEvery: Double = 10;
+    @State private var preferences = "I want to be focused coding right now"
+    @State private var checkInInterval: Double = 60
+    @State private var encourageEvery: Double = 10
+    @State private var lastCheckInTime: Int = -1
 
     var body: some View {
         VStack {
@@ -149,15 +154,16 @@ struct ContentView: View {
                         try await Task.sleep(nanoseconds: 1 * 1_000_000_000)
                         if activeWindow == nil || preferences == "" {
                             print("activeWindow is null or unchanged")
-                            continue;
+                            continue
                         }
+                        lastCheckInTime = Int(Date().timeIntervalSince1970)
 
                         let query = ChatQuery(
                             model: "gpt-3.5-turbo",
                             messages: [
                                 Chat(role: .system, content: systemPrompt),
-                                Chat(role: .user, content: "Preferences: \(preferences)"),
-                                Chat(role: .user, content: "The user is on a window titled: \(showWindow(activeWindow!)))")
+                                Chat(role: .user, content: "My preferences are \(preferences)"),
+                                Chat(role: .user, content: "The user is currently on \(showWindow(activeWindow!))"),
                             ],
                             maxTokens: 32
                         )
@@ -179,7 +185,11 @@ struct ContentView: View {
 
                         print("chatText: \(chatText)")
 
-                        try await Task.sleep(nanoseconds: UInt64(checkInInterval) * 1_000_000_000)
+                        // TODO: This would be cleaner with helper functions or better libraries
+                        // we do this so adjusting the slider works immediately.
+                        while nextCheckInIn(checkInInterval, lastCheckInTime) > 0 {
+                            try await Task.sleep(nanoseconds: 100 * 1_000_000) // 100ms
+                        }
                     }
                 }
             }
@@ -190,7 +200,7 @@ struct ContentView: View {
                 TextField("Preferences", text: $preferences)
 
                 // TODO: show next-check-in time
-                Text("I'll check what you're doing every \(Int(checkInInterval)) seconds :D")
+                Text("I'll check what you're doing every \(Int(checkInInterval)) seconds, next in \(nextCheckInIn(checkInInterval, lastCheckInTime))s :D")
                 Slider(value: $checkInInterval, in: 5...500, step: 1).padding()
 
                 Text("And I'll encourage you every \(Int(encourageEvery)) check-ins while you're working!")
