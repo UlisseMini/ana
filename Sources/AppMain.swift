@@ -33,7 +33,7 @@ let getApp = { (window: [String: Any]) -> String in
 }
 
 let showWindow = { (window: [String: Any]) -> String in
-    return "\(getApp(window)): \(getTitle(window))"
+    return "App: \(getApp(window)), with title: \(getTitle(window))"
 }
 
 func loop(chatText: String) async {
@@ -59,8 +59,12 @@ func centerWindow(window: NSWindow) {
 }
 
 
-func showNotification(title: String, body: String) {
-    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+func showNotification(
+    title: String,
+    body: String,
+    options: UNAuthorizationOptions = [.alert, .sound]
+) {
+    UNUserNotificationCenter.current().requestAuthorization(options: options) { granted, _ in
         print("Permission granted: \(granted)")
         guard granted else { return }
 
@@ -68,7 +72,7 @@ func showNotification(title: String, body: String) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.categoryIdentifier = "chat_msg_click"
+        // content.categoryIdentifier = "chat_msg_click" // TODO
 
         // Create trigger and request
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -93,31 +97,39 @@ func showNotification(title: String, body: String) {
 //   while you chat.
 
 
+// TODO: System prompt good enough to ignore docs / see docs as good.
+
 let systemPrompt = """
 You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing,
 If the user is doing something they said they didn't want to do, you should ask them why they are doing it,
 and nicely try to motivate them to work. Otherwise you should simply reply with "Great work!" and nothing else.
-
 Try to understand the user's preferences and motivations, they might have a good reason to add an exception.
-""".trimmingCharacters(in: .whitespaces)
+Write in an informal texting style, as if you were a friend. Include cute faces :D. Send short messages.
+""".trimmingCharacters(in: .whitespacesAndNewlines)
+
+let trim = { (s: String) -> String in
+    return s.trimmingCharacters(in: .whitespacesAndNewlines)
+}
 
 
 struct ContentView: View {
     @State private var activeWindow: [String: Any]? = nil
     @State private var openAI = OpenAI(apiToken: ProcessInfo.processInfo.environment["OPENAI_API_KEY"]!)
     @State private var chatText = "Loading chat text..."
+    @State private var preferences = "I want to be focused coding right now";
+    @State private var checkInInterval: Double = 60;
+    @State private var encourageEvery: Double = 10;
 
     var body: some View {
         VStack {
-            Text((activeWindow != nil ? showWindow(activeWindow!) : "No window"))
+            Text((activeWindow != nil ? "\(showWindow(activeWindow!))" : "No window"))
             .onAppear {
                 requestScreenRecordingPermission()
                 Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
                     activeWindow = getActiveWindow()
                 }
             }
-            .font(.system(size: 20))
-            Text(chatText)
+            Text("BossGPT: \(chatText.count > 0 ? chatText : "Nothing to say, keep it up! :D")")
             .onAppear {
                 Task {
                     // has possible race condition but who the fuck cares
@@ -133,9 +145,9 @@ struct ContentView: View {
 
                 // TODO: Make sure this is only spawned once.
                 Task {
-                    await try Task.sleep(nanoseconds: 1 * 1_000_000_000)
                     while true {
-                        if activeWindow == nil {
+                        await try Task.sleep(nanoseconds: 1 * 1_000_000_000)
+                        if activeWindow == nil || preferences == "" {
                             print("activeWindow is null or unchanged")
                             continue;
                         }
@@ -144,7 +156,7 @@ struct ContentView: View {
                             model: "gpt-3.5-turbo",
                             messages: [
                                 Chat(role: .system, content: systemPrompt),
-                                Chat(role: .user, content: "I'd like to be coding right now."),
+                                Chat(role: .user, content: "Preferences: \(preferences)"),
                                 Chat(role: .user, content: "The user is on a window titled: \(showWindow(activeWindow!)))")
                             ],
                             maxTokens: 32
@@ -154,20 +166,38 @@ struct ContentView: View {
                         for try await result in openAI.chatsStream(query: query) {
                             chatText += result.choices[0].delta.content ?? ""
                         }
-                        if !chatText.starts(with: "Great work!") {
+
+                        if chatText.starts(with: "Great work") {
+                            // randomly show notification in 1/encourageEvery cases
+                            if Int.random(in: 0...Int(encourageEvery)) == 0 {
+                                // TODO: Check that this doesn't make a sound, make sure the badge disappears without interaction quickly.
+                                showNotification(title: "BossGPT", body: chatText, options: [.badge])
+                            }
+                        } else {
                             showNotification(title: "BossGPT", body: chatText)
                         }
+
                         print("chatText: \(chatText)")
 
-                        await try Task.sleep(nanoseconds: 30 * 1_000_000_000)
+                        await try Task.sleep(nanoseconds: UInt64(checkInInterval) * 1_000_000_000)
                     }
                 }
             }
-            Button("Test notification") {
-                showNotification(title: "title", body: "body")
+            Divider()
+            // Two column layout
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
+                Text("What do you want to be doing?")
+                TextField("Preferences", text: $preferences)
+
+                // TODO: show next-check-in time
+                Text("I'll check what you're doing every \(Int(checkInInterval)) seconds :D")
+                Slider(value: $checkInInterval, in: 5...500, step: 1).padding()
+
+                Text("And I'll encourage you every \(Int(encourageEvery)) check-ins while you're working!")
+                Slider(value: $encourageEvery, in: 1...100, step: 1).padding()
             }
+
         }
-        .frame(width: 200, height: 100)
         .padding()
     }
 
@@ -200,10 +230,12 @@ struct bossgptApp: App {
         // Register delegate to handle notification actions
         UNUserNotificationCenter.current().delegate = NotificationDelegate()
 
-        // Create click action category
+        // TODO (once I fix handlers): Create click action category
+        /*
         let clickAction = UNNotificationAction(identifier: "CLICK_ACTION", title: "Click Me", options: [])
         let category = UNNotificationCategory(identifier: "chat_msg_click", actions: [clickAction], intentIdentifiers: [], options: [])
         UNUserNotificationCenter.current().setNotificationCategories([category])
+        */
     }
 
     var body: some Scene {
