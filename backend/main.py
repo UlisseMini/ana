@@ -160,12 +160,13 @@ def activity():
 
 
 SYSTEM_PROMPT = """
-You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing,
-If the user is doing something they said they didn't want to do, you should ask them why they are doing it,
-and nicely try to motivate them to work. Otherwise you should simply reply with "Great work!" and nothing else.
-Try to understand the user's preferences and motivations, they might have a good reason to add an exception.
-Write in an informal texting style, as if you were a friend. Include cute faces :D. Send short messages.
+- You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing.
+- If you don't know the user's preferences and motivations you should ask them.
+- If the user is doing something they said they didn't want to do, you should ask them why they are doing it, and nicely try to motivate them to work.
+- If they are on-task, you should encourage them without being distracting by saying "Great work!" in a short message with nothing else.
 """.strip()
+
+
 
 
 client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"})
@@ -213,21 +214,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     json={
                         "model": "gpt-3.5-turbo",
                         "messages": messages,
-                        "max_tokens": 32,
+                        "max_tokens": 100,
                     }
                 )
                 resp_data = resp.json()
                 message = resp_data['choices'][0]['message']
                 print('chatgpt:', message['content'])
-                if message['content'].startswith('Great work'):
-                    if random.randint(0, int(encourage_every)) == 0:
-                        await websocket.send_text(json.dumps({"type": "msg", "notif_opts": ["badge"], **message}))
-                        messages.append(message)
-                else:
-                    await websocket.send_text(json.dumps({"type": "msg", "notif_opts": ["alert", "sound"], **message}))
-                    messages.append(message)
+                should_reply = not (message['content'].startswith('Great work') and random.randint(0, int(encourage_every)) != 0)
+                notif_opts = ["badge"] if message['content'].startswith('Great work') else ["alert", "sound"]
 
-        elif data['type'] == 'msg':
+                if should_reply:
+                    await websocket.send_text(json.dumps({"type": "msg", "notif_opts": notif_opts, **message}))
+
+                    # don't pile up multiple assistant messages during checkins
+                    # TODO: Should probably pile if the previous message wasn't a checkin
+                    if messages[-1]['role'] != 'assistant':
+                        messages.append(message)
+                    else:
+                        messages[-1] = message
+                    print(messages)
+
+        elif data['type'] == 'msg': # reply to the user
             messages.append({"role": "user", "content": data['content']})
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -250,7 +257,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             },
                         }
                     ],
-                    "max_tokens": 32,
+                    "max_tokens": 100,
                 }
             )
             resp_data = resp.json()
