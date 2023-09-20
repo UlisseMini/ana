@@ -145,7 +145,6 @@ struct ChatView: View {
                         print("Error decoding JSON: \(error)")
                     }
                 }
-
             case .error(let error):
                 if let error = error {
                     print("error: \(error)")
@@ -267,6 +266,9 @@ struct ChatView: View {
 
     func addMessage(from user: String, message: String) {
         chatHistory.addMsg(from: user, message: message)
+        if user != "user" {
+            showNotification(title: user, body: message)
+        }
     }
 }
 
