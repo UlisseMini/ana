@@ -78,8 +78,9 @@ struct ChatMessage: Identifiable {
     let message: String
 }
 
-// 
-
+func wsURL() -> URL {
+    return URL(string: ProcessInfo.processInfo.environment["WS_URL"]!)!
+}
 
 struct ChatView: View {
     @ObservedObject var chatHistory: ChatHistory
@@ -91,7 +92,7 @@ struct ChatView: View {
     private let encoder = JSONEncoder()
 
     init(chatHistory ch: ChatHistory) {
-        ws = WebSocket(request: URLRequest(url: URL(string: "http://localhost:8000/ws")!))
+        ws = WebSocket(request: URLRequest(url: wsURL()))
         chatHistory = ch
         encoder.keyEncodingStrategy = .convertToSnakeCase // interop with python
     }
@@ -122,7 +123,7 @@ struct ChatView: View {
     }
 
     private func reconnect() {
-        self.ws = WebSocket(request: URLRequest(url: URL(string: "http://localhost:8000/ws")!))
+        self.ws = WebSocket(request: URLRequest(url: wsURL()))
         self.setupWebSocket()
     }
 
