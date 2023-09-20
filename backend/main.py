@@ -179,6 +179,11 @@ async def websocket_endpoint(websocket: WebSocket):
     activity = [] # [{"type": "activity", "app": "ITerm", "window_title": "zsh", "time": <EPOCH>}]
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     check_in_every = 60
+    def change_checkin(new_interval):
+        nonlocal check_in_every
+        check_in_every = new_interval
+        print(f"changed checkin interval to {check_in_every}")
+
     encourage_every = 10
 
     # TODO: User registration (not needed for testing)
@@ -229,14 +234,38 @@ async def websocket_endpoint(websocket: WebSocket):
                 json={
                     "model": "gpt-3.5-turbo",
                     "messages": messages,
+                    "functions": [
+                        {
+                            "name": "change_checkin",
+                            "description": "Change how often you check the user's activity. ",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "new_interval": {
+                                        "type": "integer",
+                                        "description": "The new time interval, in seconds, for checking activity. Default is 60.",
+                                    },
+                                },
+                                "required": ["new_interval"],
+                            },
+                        }
+                    ],
                     "max_tokens": 32,
                 }
             )
             resp_data = resp.json()
             message = resp_data['choices'][0]['message']
-            print('response', message)
-            await websocket.send_text(json.dumps({"type": "msg", **message}))
-            messages.append(message)
+            if message.get("function_call"):
+                available_functions = {
+                    "change_checkin": change_checkin,
+                }  # only one function in this example, but you can have multiple
+                function_name = message["function_call"]["name"]
+                fuction_to_call = available_functions[function_name]
+                function_args = json.loads(message["function_call"]["arguments"])
+                fuction_to_call(function_args['new_interval'])
+            else:
+                await websocket.send_text(json.dumps({"type": "msg", **message}))
+                messages.append(message)
 
 
         # TODO: Handle changing of check_in_every
