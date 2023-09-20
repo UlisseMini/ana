@@ -1,8 +1,12 @@
 # random shit
 BossGPT
 BossGPT.app
-todo
+todo*
 .env
+
+# backend shit
+db.sqlite3
+__pycache__
 
 # apple shit
 _CodeSignature
