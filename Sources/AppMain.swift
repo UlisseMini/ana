@@ -85,6 +85,7 @@ struct ChatView: View {
     @ObservedObject var chatHistory: ChatHistory
     @State private var currentMessage: String = ""
     @State private var ws: WebSocket
+    @State private var isConnected: Bool = false
     @FocusState private var isTextFieldFocused: Bool
 
     private let encoder = JSONEncoder()
@@ -120,9 +121,13 @@ struct ChatView: View {
         }
     }
 
+    private func reconnect() {
+        self.ws = WebSocket(request: URLRequest(url: URL(string: "http://localhost:8000/ws")!))
+        self.setupWebSocket()
+    }
+
 
     private func setupWebSocket() {
-        var isConnected = false
         self.ws.onEvent = { event in
             switch event {
             case .connected(let headers):
@@ -148,24 +153,27 @@ struct ChatView: View {
             case .viabilityChanged(let isViable):
                 if !isViable {
                     print("websocket is not viable, attempting to reconnect...")
-                    self.ws.connect()
+                    self.reconnect()
                 }
             case .reconnectSuggested(let isSuggested):
                 if isSuggested {
-                    self.ws.connect()
+                    self.reconnect()
                 }
             default:
                 print("Unhandled websocket event: \(event)")
             }
         }
         self.ws.connect()
+    }
 
+
+    private func setupWebSocketTimers() {
         // Setup timer reconnecting every 1s if websocket is disconnected
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
             if !isConnected {
                 print("Disconnected. attempting to reconnect...")
                 // FIXME: This doesn't work. probably need to make a new websocket object
-                self.ws.connect()
+                self.reconnect()
             }
         }
 
@@ -244,6 +252,7 @@ struct ChatView: View {
         .onAppear {
             requestScreenRecordingPermission()
             self.setupWebSocket()
+            self.setupWebSocketTimers()
             DispatchQueue.main.async {
                 isTextFieldFocused = true
             }
