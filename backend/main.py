@@ -1,12 +1,16 @@
-from fastapi import FastAPI, Form, Request, HTTPException, Depends
+from fastapi import FastAPI, Form, Request, HTTPException, Depends, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-import openai
 import sqlite3
 import stripe
 import os
+import json
+import asyncio
+import httpx
+import time
+import random
 
-openai.api_key = os.environ["OPENAI_API_KEY"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 stripe.api_key = os.environ["STRIPE_API_KEY"]
 HOST = os.environ["HOST"]
 
@@ -65,6 +69,7 @@ def startup():
 @app.on_event("shutdown")
 def shutdown():
     app.state.db.close()
+
 
 @app.post("/create-checkout-session")
 def create_checkout_session(lookup_key: str = Form(...)):
@@ -143,7 +148,7 @@ async def webhook_received(request: Request):
 
 
 @app.get("/chat")
-def chat():
+def chat(user_id: int):
     "base level route, a direct proxy to the openai api"
     pass
 
@@ -152,6 +157,91 @@ def chat():
 def activity():
     "user activity tracking. stored in the db so the AI can learn"
     return "Not implemented"
+
+
+SYSTEM_PROMPT = """
+You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing,
+If the user is doing something they said they didn't want to do, you should ask them why they are doing it,
+and nicely try to motivate them to work. Otherwise you should simply reply with "Great work!" and nothing else.
+Try to understand the user's preferences and motivations, they might have a good reason to add an exception.
+Write in an informal texting style, as if you were a friend. Include cute faces :D. Send short messages.
+""".strip()
+
+
+client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"})
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    # TODO: These should all be stored in the database
+    user = None # {"user_id": 1, ...}
+    activity = [] # [{"type": "activity", "app": "ITerm", "window_title": "zsh", "time": <EPOCH>}]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    check_in_every = 60
+    encourage_every = 10
+
+    # TODO: User registration (not needed for testing)
+    # data = json.loads(await websocket.receive_text())
+    # if data['type'] == 'register':
+    #     print(f"registering user {data}")
+    #     user = data['user']
+    # else:
+    #     raise ValueError(f"message type {data['type']} disallowed for first message")
+
+
+    last_check_in = 0
+    while True:
+        data = json.loads(await websocket.receive_text())
+        print('received', data)
+        if data['type'] == 'activity_info':
+            activity.append(data)
+            if time.time() - last_check_in > check_in_every:
+                last_check_in = time.time()
+
+                # append most recent activity info to prompt
+                # TODO: better prompting. this is pretty stupid
+                messages.append({"role": "user", "content": f"The user is currently on {data['app']} doing {data['window_title']}"})
+
+                resp = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    json={
+                        "model": "gpt-3.5-turbo",
+                        "messages": messages,
+                        "max_tokens": 32,
+                    }
+                )
+                resp_data = resp.json()
+                message = resp_data['choices'][0]['message']
+                print('chatgpt:', message['content'])
+                if message['content'].startswith('Great work'):
+                    if random.randint(0, int(encourage_every)) == 0:
+                        await websocket.send_text(json.dumps({"type": "msg", "notif_opts": ["badge"], **message}))
+                        messages.append(message)
+                else:
+                    await websocket.send_text(json.dumps({"type": "msg", "notif_opts": ["alert", "sound"], **message}))
+                    messages.append(message)
+
+        elif data['type'] == 'msg':
+            messages.append({"role": "user", "content": data['content']})
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                json={
+                    "model": "gpt-3.5-turbo",
+                    "messages": messages,
+                    "max_tokens": 32,
+                }
+            )
+            resp_data = resp.json()
+            message = resp_data['choices'][0]['message']
+            print('response', message)
+            await websocket.send_text(json.dumps({"type": "msg", **message}))
+            messages.append(message)
+
+
+        # TODO: Handle changing of check_in_every
+
+        await asyncio.sleep(1)
 
 
 app.mount("/", StaticFiles(directory="static", html=True))

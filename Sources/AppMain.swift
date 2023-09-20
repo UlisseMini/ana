@@ -1,11 +1,12 @@
 import SwiftUI
 import Foundation
-import OpenAI
 import UserNotifications
-import UserNotificationsUI
 import Starscream
 
 
+// --------------- Utility Functions ---------------
+
+ 
 func getActiveWindow() -> [String: Any]? {
     if let frontmostApp = NSWorkspace.shared.frontmostApplication {
         let frontmostAppPID = frontmostApp.processIdentifier
@@ -27,17 +28,6 @@ func requestScreenRecordingPermission() {
     let _ = CGWindowListCreateImage(screenBounds, .optionOnScreenBelowWindow, kCGNullWindowID, .bestResolution)
 }
 
-let getTitle = { (window: [String: Any]) -> String in
-    return window["kCGWindowName"] as? String ?? "No window"
-}
-let getApp = { (window: [String: Any]) -> String in
-    return window["kCGWindowOwnerName"] as? String ?? "No app"
-}
-
-let showWindow = { (window: [String: Any]) -> String in
-    return "App: \(getApp(window)), with title: \(getTitle(window))"
-}
-
 func showNotification(
     title: String,
     body: String,
@@ -51,7 +41,7 @@ func showNotification(
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        // content.categoryIdentifier = "chat_msg_click" // TODO
+        // content.categoryIdentifier = "chat_msg_click" // TODO: handle clicks
 
         // Create trigger and request
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -67,164 +57,206 @@ func showNotification(
 }
 
 
-// MVP Psudocode:
-// - Move window to center and hide. perhaps add opacity.
-// - Notification every so often with msg from ai bot
-//   - should only notify if they've been on the same window-concept for a while
-// - Clicking notification opens chat window
-// - Chat window is 1-1 with your AI. notifications for window-changes are paused
-//   while you chat.
+// --------------- Main App UI ---------------
 
 
-// TODO: System prompt good enough to ignore docs / see docs as good.
-
-let systemPrompt = """
-You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing,
-If the user is doing something they said they didn't want to do, you should ask them why they are doing it,
-and nicely try to motivate them to work. Otherwise you should simply reply with "Great work!" and nothing else.
-Try to understand the user's preferences and motivations, they might have a good reason to add an exception.
-Write in an informal texting style, as if you were a friend. Include cute faces :D. Send short messages.
-""".trimmingCharacters(in: .whitespacesAndNewlines)
-
-let trim = { (s: String) -> String in
-    return s.trimmingCharacters(in: .whitespacesAndNewlines)
+struct ChatMessage: Identifiable {
+    let id = UUID()
+    let user: String
+    let message: String
 }
 
-func nextCheckInIn(_ checkInInterval: Double, _ lastCheckInTime: Int) -> Int {
-    return  Int(checkInInterval) + lastCheckInTime - Int(Date().timeIntervalSince1970)
-}
+// 
 
 
-struct ContentView: View {
-    @State private var activeWindow: [String: Any]? = nil
-    @State private var openAI = OpenAI(apiToken: ProcessInfo.processInfo.environment["OPENAI_API_KEY"]!)
-    @State private var chatText = "Loading chat text..."
-    @State private var preferences = "I want to be focused coding right now"
-    @State private var checkInInterval: Double = 60
-    @State private var encourageEvery: Double = 10
-    @State private var lastCheckInTime: Int = -1
-    @State private var message: String = ""
-    @State private var messages: [Chat] = []
+struct ChatView: View {
+    @ObservedObject var chatHistory: ChatHistory
+    @State private var currentMessage: String = ""
+    @State private var ws: WebSocket
+    private let encoder = JSONEncoder()
 
-    func sendMessage() {
-        print("sent message")
-        // Append the user message to the messages array
-        messages.append(Chat(role: .user, content: message))
+    init(chatHistory ch: ChatHistory) {
+        ws = WebSocket(request: URLRequest(url: URL(string: "http://localhost:8000/ws")!))
+        chatHistory = ch
+        encoder.keyEncodingStrategy = .convertToSnakeCase // interop with python
+    }
+
+
+    var messages: [ChatMessage] {
+        chatHistory.messages
+    }
+
+    private func handleMessage(message: MsgMessage) {
+        switch message.type {
+        case .msg:
+            addMessage(from: message.role, message: message.content)
+        case .activityInfo:
+            // print error; server shouldn't send us activity info
+            print("ERROR: Received activity info from server")
+        default:
+            print("Unknown message type: \(message.type)")
+        }
+    }
+
+    private func sendMessage(_ message: Codable) {
+        if let jsonData = try? encoder.encode(message) {
+            if let jsonString = String(data: jsonData, encoding: .utf8) {
+                ws.write(string: jsonString) // TODO: handle errors & retry
+            }
+        }
+    }
+
+
+    private func setupWebSocket() {
+        var isConnected = false
+        self.ws.onEvent = { event in
+            switch event {
+            case .connected(let headers):
+                print("connected, headers: \(headers)")
+                isConnected = true
+            case .disconnected(_, _):
+                isConnected = false
+            case .text(let text):
+                // parse text as json 
+                if let jsonData = text.data(using: .utf8) {
+                    do {
+                        let message = try JSONDecoder().decode(MsgMessage.self, from: jsonData)
+                        handleMessage(message: message)
+                    } catch {
+                        print("Error decoding JSON: \(error)")
+                    }
+                }
+
+            case .error(let error):
+                if let error = error {
+                    print("error: \(error)")
+                }
+            case .viabilityChanged(let isViable):
+                if !isViable {
+                    print("websocket is not viable, attempting to reconnect...")
+                    self.ws.connect()
+                }
+            case .reconnectSuggested(let isSuggested):
+                if isSuggested {
+                    self.ws.connect()
+                }
+            default:
+                print("Unhandled websocket event: \(event)")
+            }
+        }
+        self.ws.connect()
+
+        // Setup timer reconnecting every 1s if websocket is disconnected
+        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
+            if !isConnected {
+                print("Disconnected. attempting to reconnect...")
+                // FIXME: This doesn't work. probably need to make a new websocket object
+                self.ws.connect()
+            }
+        }
+
+        // Setup timer sending activity info very frequently
+        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
+            if let window = getActiveWindow() {
+                let windowTitle = window["kCGWindowName"] as? String
+                let app = window["kCGWindowOwnerName"] as? String
+                let activityInfo = ActivityInfoMessage(
+                    type: .activityInfo,
+                    windowTitle: windowTitle,
+                    app: app
+                )
+                self.sendMessage(activityInfo)
+            }
+        }
     }
 
     var body: some View {
         VStack {
-            Text((activeWindow != nil ? "\(showWindow(activeWindow!))" : "No window"))
-            .onAppear {
-                requestScreenRecordingPermission()
-                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                    activeWindow = getActiveWindow()
-                }
-            }
-            Text("BossGPT: \(chatText.count > 0 ? chatText : "Nothing to say, keep it up! :D")")
-            .onAppear {
-                // TODO: Make sure this is only spawned once.
-                Task {
-                    while true {
-                        try await Task.sleep(nanoseconds: 1 * 1_000_000_000)
-                        if activeWindow == nil || preferences == "" {
-                            print("activeWindow is null or unchanged")
-                            continue
-                        }
-                        lastCheckInTime = Int(Date().timeIntervalSince1970)
-
-                        var chatMessages = [
-                            Chat(role: .system, content: systemPrompt),
-                            Chat(role: .user, content: "My preferences are \(preferences)")
-                        ]
-                        
-                        // Concatenate the messages array with chatMessages
-                        chatMessages += messages
-
-                        chatMessages += [
-                            Chat(role: .user, content: "The user is currently on \(showWindow(activeWindow!))"),
-                        ]
-
-                        print(chatMessages)
-
-                        let query = ChatQuery(
-                            model: "gpt-3.5-turbo",
-                            messages: chatMessages,
-                            maxTokens: 100
-                        )
-
-                        chatText = ""
-                        for try await result in openAI.chatsStream(query: query) {
-                            chatText += result.choices[0].delta.content ?? ""
-                        }
-
-                        messages.append(Chat(role: .assistant, content: chatText))
-
-                        if chatText.starts(with: "Great work") {
-                            // randomly show notification in 1/encourageEvery cases
-                            if Int.random(in: 0...Int(encourageEvery)) == 0 {
-                                // TODO: Check that this doesn't make a sound, make sure the badge disappears without interaction quickly.
-                                showNotification(title: "BossGPT", body: chatText, options: [.badge])
+            ScrollViewReader { scrollView in
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(messages) { chatMessage in
+                            HStack {
+                                if chatMessage.user == "User1" {
+                                    Spacer()
+                                    Text(chatMessage.message)
+                                        .padding()
+                                        .background(Color.blue)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
+                                } else {
+                                    Text(chatMessage.message)
+                                        .padding()
+                                        .background(Color.green)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(10)
+                                    Spacer()
+                                }
                             }
-                        } else {
-                            showNotification(title: "BossGPT", body: chatText)
+                            .id(chatMessage.id)
                         }
-
-                        print("chatText: \(chatText)")
-
-                        // TODO: This would be cleaner with helper functions or better libraries
-                        // we do this so adjusting the slider works immediately.
-                        while nextCheckInIn(checkInInterval, lastCheckInTime) > 0 {
-                            try await Task.sleep(nanoseconds: 100 * 1_000_000) // 100ms
+                    }
+                    .onChange(of: messages.count) { _ in
+                        if let lastMessage = messages.last {
+                            scrollView.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
                 }
             }
-            Divider()
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
-                Text("What do you want to be doing?")
-                TextField("Preferences", text: $preferences)
 
-                // New TextField for "message"
-                Text("Message:")
-                TextField("Enter your message", text: $message, onCommit: {
-                    sendMessage() // Call the function when "Enter" is pressed
+            HStack {
+                TextField("Enter message...", text: $currentMessage, onCommit: {
+                    addMessage(from: "User1", message: currentMessage)
+
+                        let messageToSend = MsgMessage(type: .msg, role: "user", content: currentMessage, notifOpts: nil)
+                        if let jsonData = try? encoder.encode(messageToSend),
+                           let jsonString = String(data: jsonData, encoding: .utf8) {
+                            ws.write(string: jsonString)
+                        }
+
+
+
                     DispatchQueue.main.async {
-                        message = ""
+                        currentMessage = ""
                     }
                 })
-
-                // TODO: show next-check-in time
-                Text("I'll check what you're doing every \(Int(checkInInterval)) seconds, next in \(nextCheckInIn(checkInInterval, lastCheckInTime))s :D")
-                Slider(value: $checkInInterval, in: 5...500, step: 1).padding()
-
-                Text("And I'll encourage you every \(Int(encourageEvery)) check-ins while you're working!")
-                Slider(value: $encourageEvery, in: 1...100, step: 1).padding()
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                Button("Send") {
+                    addMessage(from: "User1", message: currentMessage)
+                    currentMessage = ""
+                }
             }
+            .padding()
+        }
+        .onAppear {
+            self.setupWebSocket()
+        }
+    }
 
+    func addMessage(from user: String, message: String) {
+        chatHistory.addMsg(from: user, message: message)
+    }
+}
 
+struct SettingsView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Settings Pane")
+                .font(.largeTitle)
+            Text("Placeholder Text for Settings")
+                .font(.body)
         }
         .padding()
     }
-
 }
 
 
-class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        print("foreground notification")
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-
-        print(response)
-        if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
-            print("Default action!")
-        }
-        if response.actionIdentifier == "CLICK_ACTION" {
-            print("They clicked our special button!")
-        }
-        completionHandler()
+class ChatHistory: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+    
+    func addMsg(from user: String, message: String) {
+        let chatMessage = ChatMessage(user: user, message: message)
+        messages.append(chatMessage)
     }
 }
 
@@ -232,22 +264,22 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
 @main
 struct bossgptApp: App {
-    init() {
-        // Register delegate to handle notification actions
-        UNUserNotificationCenter.current().delegate = NotificationDelegate()
-
-        // TODO (once I fix handlers): Create click action category
-        /*
-        let clickAction = UNNotificationAction(identifier: "CLICK_ACTION", title: "Click Me", options: [])
-        let category = UNNotificationCategory(identifier: "chat_msg_click", actions: [clickAction], intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([category])
-        */
-    }
-
+    @StateObject var chatHistory = ChatHistory()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            NavigationView {
+                List {
+                    NavigationLink(destination: ChatView(chatHistory: chatHistory)) {
+                        Label("Chat", systemImage: "message")
+                    }
+                    NavigationLink(destination: SettingsView()) {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+                .listStyle(SidebarListStyle())
+                ChatView(chatHistory: chatHistory)
+            }
         }
     }
 }
-
