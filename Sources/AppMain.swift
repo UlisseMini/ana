@@ -304,7 +304,6 @@ struct bossgptApp: App {
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
-                .listStyle(SidebarListStyle())
                 ChatView(chatHistory: chatHistory)
             }
         }
