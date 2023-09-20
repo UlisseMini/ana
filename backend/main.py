@@ -1,11 +1,10 @@
-from fastapi import FastAPI, Form, Request, HTTPException, Depends, WebSocket
+from fastapi import FastAPI, Form, Request, HTTPException, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import sqlite3
 import stripe
 import os
 import json
-import asyncio
 import httpx
 import time
 import random
