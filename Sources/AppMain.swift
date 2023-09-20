@@ -124,6 +124,14 @@ struct ContentView: View {
     @State private var checkInInterval: Double = 60
     @State private var encourageEvery: Double = 10
     @State private var lastCheckInTime: Int = -1
+    @State private var message: String = ""
+    @State private var messages: [Chat] = []
+
+    func sendMessage() {
+        print("sent message")
+        // Append the user message to the messages array
+        messages.append(Chat(role: .user, content: message))
+    }
 
     var body: some View {
         VStack {
@@ -158,20 +166,32 @@ struct ContentView: View {
                         }
                         lastCheckInTime = Int(Date().timeIntervalSince1970)
 
+                        var chatMessages = [
+                            Chat(role: .system, content: systemPrompt),
+                            Chat(role: .user, content: "My preferences are \(preferences)")
+                        ]
+                        
+                        // Concatenate the messages array with chatMessages
+                        chatMessages += messages
+
+                        chatMessages += [
+                            Chat(role: .user, content: "The user is currently on \(showWindow(activeWindow!))"),
+                        ]
+
+                        print(chatMessages)
+
                         let query = ChatQuery(
                             model: "gpt-3.5-turbo",
-                            messages: [
-                                Chat(role: .system, content: systemPrompt),
-                                Chat(role: .user, content: "My preferences are \(preferences)"),
-                                Chat(role: .user, content: "The user is currently on \(showWindow(activeWindow!))"),
-                            ],
-                            maxTokens: 32
+                            messages: chatMessages,
+                            maxTokens: 100
                         )
 
                         chatText = ""
                         for try await result in openAI.chatsStream(query: query) {
                             chatText += result.choices[0].delta.content ?? ""
                         }
+
+                        messages.append(Chat(role: .assistant, content: chatText))
 
                         if chatText.starts(with: "Great work") {
                             // randomly show notification in 1/encourageEvery cases
@@ -194,10 +214,18 @@ struct ContentView: View {
                 }
             }
             Divider()
-            // Two column layout
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
                 Text("What do you want to be doing?")
                 TextField("Preferences", text: $preferences)
+
+                // New TextField for "message"
+                Text("Message:")
+                TextField("Enter your message", text: $message, onCommit: {
+                    sendMessage() // Call the function when "Enter" is pressed
+                    DispatchQueue.main.async {
+                        message = ""
+                    }
+                })
 
                 // TODO: show next-check-in time
                 Text("I'll check what you're doing every \(Int(checkInInterval)) seconds, next in \(nextCheckInIn(checkInInterval, lastCheckInTime))s :D")
@@ -206,6 +234,7 @@ struct ContentView: View {
                 Text("And I'll encourage you every \(Int(encourageEvery)) check-ins while you're working!")
                 Slider(value: $encourageEvery, in: 1...100, step: 1).padding()
             }
+
 
         }
         .padding()
