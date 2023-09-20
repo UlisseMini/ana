@@ -178,17 +178,22 @@ struct ChatView: View {
             }
         }
 
-        // Setup timer sending activity info very frequently
+        var lastWindowTitle: String?
+
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
             if let window = getActiveWindow() {
                 let windowTitle = window["kCGWindowName"] as? String
                 let app = window["kCGWindowOwnerName"] as? String
-                let activityInfo = ActivityInfoMessage(
-                    type: .activityInfo,
-                    windowTitle: windowTitle,
-                    app: app
-                )
-                self.sendMessage(activityInfo)
+                if windowTitle != lastWindowTitle {
+                    let activityInfo = ActivityInfoMessage(
+                        type: .activityInfo,
+                        windowTitle: windowTitle,
+                        app: app,
+                        time: Int(Date().timeIntervalSince1970)
+                    )
+                    self.sendMessage(activityInfo)
+                    lastWindowTitle = windowTitle
+                }
             }
         }
     }
