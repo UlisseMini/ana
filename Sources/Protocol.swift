@@ -26,6 +26,7 @@ struct ActivityInfoMessage: Codable {
     let type: MessageType
     let windowTitle: String?
     let app: String?
+    let time: Int?
 }
 
 struct MsgMessage: Codable {

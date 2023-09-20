@@ -185,7 +185,8 @@ struct ChatView: View {
                 let activityInfo = ActivityInfoMessage(
                     type: .activityInfo,
                     windowTitle: windowTitle,
-                    app: app
+                    app: app,
+                    time: Int(Date().timeIntervalSince1970)
                 )
                 self.sendMessage(activityInfo)
             }
