@@ -60,7 +60,8 @@ def setup_db(conn):
 @app.on_event("startup")
 def startup():
     # TEMPORARY: delete db on startup for testing
-    os.remove("db.sqlite3")
+    if os.path.exists("db.sqlite3"):
+        os.remove("db.sqlite3")
     # setup db
     app.state.db = sqlite3.connect("db.sqlite3")
     setup_db(app.state.db)
