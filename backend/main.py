@@ -8,6 +8,7 @@ import json
 import httpx
 import time
 import random
+import asyncio
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 stripe.api_key = os.environ["STRIPE_API_KEY"]
@@ -160,10 +161,9 @@ def activity():
 
 
 SYSTEM_PROMPT = """
-- You are a productivity assistant. Every few minutes you will be asked to evaluate what the user is doing.
-- If you don't know the user's preferences and motivations you should ask them.
-- If the user is doing something they said they didn't want to do, you should ask them why they are doing it, and nicely try to motivate them to work.
-- If they are on-task, you should encourage them without being distracting by saying "Great work!" in a short message with nothing else.
+You are a productivity assistant who only interrupts if a user is definitely distracted from their task (e.g. on social media). If they are definitely distracted, kindly try and motivate them to work. Otherwise, affirm on-task activity with "Great work!" and nothing else. Adapt when the user updates their preferences.
+
+After the user specifies their goal, encourage them and tell them how often you'll be checking in on them, and ask if they want to change how frequently you check in.
 """.strip()
 
 INITIAL_MESSAGE = """
@@ -171,11 +171,18 @@ Hi there! what do you want to work on right now? I can help you stay on task and
 """.strip()
 
 
-client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"})
+client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}, timeout=100)
+
+
+# TODO: Make more sophisticated. exists to avoid ctx length errors
+# and to avoid repetition 
+def distill_history(messages):
+    # keep [sys, initial, preferences] and last 3 checkins (activity, assistant) assuming no user response.
+    return messages[:3] + messages[-6:] if len(messages) > 9 else messages
+
 
 # TODO: Move all this websocket logic to a class so I can use methods
 # instead of repeating the same logic all over the place.
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -183,13 +190,19 @@ async def websocket_endpoint(websocket: WebSocket):
     # TODO: These should all be stored in the database
     activity = [] # [{"type": "activity", "app": "ITerm", "window_title": "zsh", "time": <EPOCH>}]
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    check_in_every = 60
+    check_in_every = 300
     def change_checkin(new_interval):
+        if new_interval < 30:
+            return {"role": "assistant", "content": "Sorry, I can't check in that often or Uli will go bankrupt. Please select a longer interval."}
+
         nonlocal check_in_every
         check_in_every = new_interval
-        print(f"changed checkin interval to {check_in_every}")
+        return {"role": "assistant", "content": f"Changed checkin interval to {check_in_every} seconds."}
 
-    encourage_every = 10
+    # set to around 10 minutes, depending on how often we're checking in
+    encourage_every = round(check_in_every/60 * 10)
+
+    temperature = 0.5
 
     data = json.loads(await websocket.receive_text())
     if data['type'] == 'register':
@@ -210,46 +223,62 @@ async def websocket_endpoint(websocket: WebSocket):
 
     last_check_in = 0
     while True:
-        data = json.loads(await websocket.receive_text())
-        print('received', data)
+        # TODO: Cleanup this mess. only here to make sure we don't miss any activities
+        # by becoming stuck waiting for a title change.
+        try:
+            text = await asyncio.wait_for(websocket.receive_text(), timeout=5)
+            data = json.loads(text)
+            print('received', data)
+        except asyncio.TimeoutError:
+            if len(activity) > 0:
+                # normally time.time() first but if the activity is fresh it's the same
+                checked_last_time = activity[-1]['time'] - last_check_in > check_in_every and len(messages) > 3
+                if not checked_last_time:
+                    data = activity[-1]
+                else:
+                    continue
+
         if data['type'] == 'activity_info':
             # insert activity into database
             c = app.state.db.cursor()
             c.execute("INSERT INTO activity (user_id, app, window_title, time) VALUES (?, ?, ?, ?)", (user_id, data['app'], data['window_title'], data['time']))
             app.state.db.commit()
-
             activity.append(data)
-            if time.time() - last_check_in > check_in_every:
+
+            # don't do anything for undefined app/window title & our own window
+            if not data['app'] or not data['window_title'] or data['app'].lower() == 'bossgpt':
+                continue
+
+            # len(messages) > 3 ensures the user has given some preference info,
+            # and we've sent the reply to it. len(messages) = 2 to start.
+            if time.time() - last_check_in > check_in_every and len(messages) > 3:
                 last_check_in = time.time()
 
                 # append most recent activity info to prompt
                 # TODO: better prompting. this is pretty stupid
-                messages.append({"role": "user", "content": f"The user is currently on {data['app']} doing {data['window_title']}"})
+                messages.append({"role": "user", "content": f"I'm currently on app {data['app']} with title {data['window_title']}"})
 
                 resp = await client.post(
                     "https://api.openai.com/v1/chat/completions",
                     json={
-                        "model": "gpt-3.5-turbo",
-                        "messages": messages,
+                        "model": "gpt-4",
+                        "messages": distill_history(messages),
                         "max_tokens": 100,
+                        "stop": ["Great work!"],
+                        "temperature": temperature,
                     }
                 )
                 resp_data = resp.json()
                 message = resp_data['choices'][0]['message']
+                if message['content'].strip() == "":
+                    message['content'] = "Great work!"
                 print('chatgpt:', message['content'])
                 should_reply = not (message['content'].startswith('Great work') and random.randint(0, int(encourage_every)) != 0)
                 notif_opts = ["badge"] if message['content'].startswith('Great work') else ["alert", "sound"]
 
                 if should_reply:
                     await websocket.send_text(json.dumps({"type": "msg", "notif_opts": notif_opts, **message}))
-
-                    # don't pile up multiple assistant messages during checkins
-                    # TODO: Should probably pile if the previous message wasn't a checkin
-                    if messages[-1]['role'] != 'assistant':
-                        messages.append(message)
-                    else:
-                        messages[-1] = message
-                    print(messages)
+                    messages.append(message)
 
         elif data['type'] == 'msg': # reply to the user
             # save message  to db
@@ -261,18 +290,19 @@ async def websocket_endpoint(websocket: WebSocket):
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
                 json={
-                    "model": "gpt-3.5-turbo",
-                    "messages": messages,
+                    "model": "gpt-4",
+                    "messages": distill_history(messages),
+                    "temperature": temperature,
                     "functions": [
                         {
                             "name": "change_checkin",
-                            "description": "Change how often you check the user's activity. ",
+                            "description": "Change how often you check the user's activity.",
                             "parameters": {
                                 "type": "object",
                                 "properties": {
                                     "new_interval": {
                                         "type": "integer",
-                                        "description": "The new time interval, in seconds, for checking activity. Default is 60.",
+                                        "description": f"The new time interval, in seconds, for checking activity. Current is {check_in_every}.",
                                     },
                                 },
                                 "required": ["new_interval"],
@@ -291,7 +321,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 function_name = message["function_call"]["name"]
                 fuction_to_call = available_functions[function_name]
                 function_args = json.loads(message["function_call"]["arguments"])
-                fuction_to_call(function_args['new_interval'])
+                message = fuction_to_call(function_args['new_interval'])
+                await websocket.send_text(json.dumps({"type": "msg", **message}))
             else:
                 await websocket.send_text(json.dumps({"type": "msg", **message}))
                 messages.append(message)
