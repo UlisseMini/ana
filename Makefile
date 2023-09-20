@@ -3,8 +3,8 @@ all: buildapp
 # build app to BossGPT.app
 buildapp: release Info.plist
 	mkdir -p BossGPT.app/Contents/MacOS BossGPT.app/Contents/Resources
-	cp -f BossGPT BossGPT.app/Contents/MacOS/BossGPT
-	cp -f Info.plist BossGPT.app/Contents/Info.plist
+	cp BossGPT BossGPT.app/Contents/MacOS/BossGPT
+	cp Info.plist BossGPT.app/Contents/Info.plist
 	# cp -f icon.icns BossGPT.app/Contents/Resources/icon.icns
 	chmod +x BossGPT.app/Contents/MacOS/BossGPT
 	codesign -s "Apple Distribution" BossGPT.app || true
@@ -18,10 +18,10 @@ debug:
 
 build:
 	swift build -c $(TARGET)
-	cp -f .build/arm64-apple-macosx/$(TARGET)/bossgpt-swift BossGPT
+	cp .build/arm64-apple-macosx/$(TARGET)/bossgpt-swift BossGPT
 
 
-Info.plist: Info.plist.template
+Info.plist:
 	if [ -z "$(WS_URL)" ]; then echo "WS_URL is unset"; exit 1; fi
 	sed -e "s|WS_URL_REPLACE_ME|$(WS_URL)|" Info.plist.template > Info.plist
 
@@ -31,8 +31,7 @@ dev:
 
 
 clean:
-	rm -rf BossGPT BossGPT.app
-	swift package clean
+	rm -rf BossGPT BossGPT.app Info.plist
 
 
 .PHONY: all build buildapp
