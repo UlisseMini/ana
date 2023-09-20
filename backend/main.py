@@ -1,7 +1,6 @@
-from fastapi import FastAPI, Form, Request, HTTPException
+from fastapi import FastAPI, Form, Request, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 import openai
 import sqlite3
 import stripe
@@ -143,26 +142,16 @@ async def webhook_received(request: Request):
 
 
 
-
-# authentication middleware, obtains user id from the request
-@app.middleware("http")
-async def auth_middleware(request, call_next):
-    # TODO
-    # get user id from request
-    # if user id is not present, create a new user
-    # add user id to request state
-    response = await call_next(request)
-    return response
-
-
+@app.get("/chat")
 def chat():
     "base level route, a direct proxy to the openai api"
     pass
 
 
+@app.get("/activity")
 def activity():
     "user activity tracking. stored in the db so the AI can learn"
-    pass
+    return "Not implemented"
 
 
 app.mount("/", StaticFiles(directory="static", html=True))
