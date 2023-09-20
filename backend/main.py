@@ -322,10 +322,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 fuction_to_call = available_functions[function_name]
                 function_args = json.loads(message["function_call"]["arguments"])
                 message = fuction_to_call(function_args['new_interval'])
-                await websocket.send_text(json.dumps({"type": "msg", **message}))
-            else:
-                await websocket.send_text(json.dumps({"type": "msg", **message}))
-                messages.append(message)
+
+            await websocket.send_text(json.dumps({"type": "msg", **message}))
+            messages.append(message)
 
 
 
