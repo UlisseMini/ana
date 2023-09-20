@@ -3,6 +3,8 @@ import Foundation
 import OpenAI
 import UserNotifications
 import UserNotificationsUI
+import Starscream
+
 
 func getActiveWindow() -> [String: Any]? {
     if let frontmostApp = NSWorkspace.shared.frontmostApplication {
@@ -35,29 +37,6 @@ let getApp = { (window: [String: Any]) -> String in
 let showWindow = { (window: [String: Any]) -> String in
     return "App: \(getApp(window)), with title: \(getTitle(window))"
 }
-
-func loop(chatText: String) async {
-    while true {
-        let activeWindow = getActiveWindow()
-        if activeWindow != nil {
-            print(showWindow(activeWindow!))
-        }
-        await Task.sleep(1 * 1_000_000_000)
-    }
-}
-
-
-func centerWindow(window: NSWindow) {
-    let screen = window.screen ?? NSScreen.main!
-    let screenRect = screen.visibleFrame
-    let windowRect = window.frame
-
-    let x = (screenRect.width - windowRect.width) / 2
-    let y = (screenRect.height - windowRect.height) / 2
-
-    window.setFrameOrigin(NSPoint(x: x + screenRect.minX, y: y + screenRect.minY))
-}
-
 
 func showNotification(
     title: String,
@@ -144,18 +123,6 @@ struct ContentView: View {
             }
             Text("BossGPT: \(chatText.count > 0 ? chatText : "Nothing to say, keep it up! :D")")
             .onAppear {
-                Task {
-                    // has possible race condition but who the fuck cares
-                    while NSApp.windows.isEmpty {
-                        try await Task.sleep(nanoseconds: 100 * 1_000_000)
-                    }
-                    let window = NSApp.windows[0]
-                    centerWindow(window: window)
-                    // window.miniaturize(nil)
-                    // NSApp.hide(nil)
-                }
-
-
                 // TODO: Make sure this is only spawned once.
                 Task {
                     while true {
