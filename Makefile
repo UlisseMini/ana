@@ -22,13 +22,8 @@ build:
 
 
 Info.plist: Info.plist.template
-	key=$$(grep -o 'sk-[A-Za-z0-9]\{48\}' .env); \
-	if [[ -z "$$key" ]]; then \
-		echo "No match"; \
-		exit 1; \
-	else \
-		sed "s/sk-REPLACE-ME/$$key/" Info.plist.template > Info.plist; \
-	fi
+	if [ -z "$(WS_URL)" ]; then echo "WS_URL is unset"; exit 1; fi
+	sed -e "s|WS_URL_REPLACE_ME|$(WS_URL)|" Info.plist.template > Info.plist
 
 
 dev:
