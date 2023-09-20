@@ -166,10 +166,15 @@ SYSTEM_PROMPT = """
 - If they are on-task, you should encourage them without being distracting by saying "Great work!" in a short message with nothing else.
 """.strip()
 
-
+INITIAL_MESSAGE = """
+Hi there! what do you want to work on right now? I can help you stay on task and be more productive!
+""".strip()
 
 
 client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"})
+
+# TODO: Move all this websocket logic to a class so I can use methods
+# instead of repeating the same logic all over the place.
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -197,6 +202,10 @@ async def websocket_endpoint(websocket: WebSocket):
         user_id = c.lastrowid
     else:
         raise ValueError(f"message type {data['type']} disallowed for first message")
+
+    # after registration send a hardcoded initial message
+    messages.append({"role": "assistant", "content": INITIAL_MESSAGE})
+    await websocket.send_json({"type": "msg", **messages[-1]})
 
 
     last_check_in = 0
