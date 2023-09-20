@@ -4,6 +4,15 @@ import UserNotifications
 import Starscream
 
 
+// Hides outline around textbox
+extension NSTextField { 
+    open override var focusRingType: NSFocusRingType {
+        get { .none }
+        set { }
+    }
+}
+
+
 // --------------- Utility Functions ---------------
 
  
@@ -56,6 +65,9 @@ func showNotification(
     }
 }
 
+let trim = { (str: String) -> String in
+    return str.trimmingCharacters(in: .whitespacesAndNewlines)
+}
 
 // --------------- Main App UI ---------------
 
@@ -73,6 +85,8 @@ struct ChatView: View {
     @ObservedObject var chatHistory: ChatHistory
     @State private var currentMessage: String = ""
     @State private var ws: WebSocket
+    @FocusState private var isTextFieldFocused: Bool
+
     private let encoder = JSONEncoder()
 
     init(chatHistory ch: ChatHistory) {
@@ -174,24 +188,27 @@ struct ChatView: View {
         VStack {
             ScrollViewReader { scrollView in
                 ScrollView {
-                    LazyVStack(spacing: 10) {
+                    LazyVStack(spacing: 5) {
                         ForEach(messages) { chatMessage in
                             HStack {
-                                if chatMessage.user == "User1" {
+                                if chatMessage.user == "user" {
                                     Spacer()
                                     Text(chatMessage.message)
-                                        .padding()
-                                        .background(Color.blue)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
+                                    .padding(.vertical, 5)
+                                    .padding(.horizontal, 10)
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
                                 } else {
                                     Text(chatMessage.message)
-                                        .padding()
-                                        .background(Color.green)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(10)
+                                    .padding(.vertical, 5)
+                                    .padding(.horizontal, 10)
+                                    .background(Color.gray)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
                                     Spacer()
                                 }
+
                             }
                             .id(chatMessage.id)
                         }
@@ -201,36 +218,37 @@ struct ChatView: View {
                             scrollView.scrollTo(lastMessage.id, anchor: .bottom)
                         }
                     }
+                    .padding()
                 }
             }
 
             HStack {
                 TextField("Enter message...", text: $currentMessage, onCommit: {
-                    addMessage(from: "User1", message: currentMessage)
-
-                        let messageToSend = MsgMessage(type: .msg, role: "user", content: currentMessage, notifOpts: nil)
-                        if let jsonData = try? encoder.encode(messageToSend),
-                           let jsonString = String(data: jsonData, encoding: .utf8) {
-                            ws.write(string: jsonString)
-                        }
-
-
+                    if trim(currentMessage) == "" {
+                        return
+                    }
+                    // TODO: This should be gone & we wait till python sends our msg back to us
+                    addMessage(from: "user", message: currentMessage)
+                    let messageToSend = MsgMessage(type: .msg, role: "user", content: currentMessage, notifOpts: nil)
+                    self.sendMessage(messageToSend)
 
                     DispatchQueue.main.async {
                         currentMessage = ""
                     }
                 })
                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                Button("Send") {
-                    addMessage(from: "User1", message: currentMessage)
-                    currentMessage = ""
-                }
+                .padding()
+                .focused($isTextFieldFocused)
             }
-            .padding()
         }
         .onAppear {
+            requestScreenRecordingPermission()
             self.setupWebSocket()
+            DispatchQueue.main.async {
+                isTextFieldFocused = true
+            }
         }
+        .navigationTitle("Chat")
     }
 
     func addMessage(from user: String, message: String) {
