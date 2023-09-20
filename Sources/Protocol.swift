@@ -13,8 +13,8 @@ struct BaseMessage: Codable {
 }
 
 struct User: Codable {
-    let userID: Int
-    // Add other fields
+    let username: String
+    let fullname: String
 }
 
 struct RegisterMessage: Codable {

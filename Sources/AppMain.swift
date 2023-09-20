@@ -134,7 +134,17 @@ struct ChatView: View {
             case .connected(let headers):
                 print("connected, headers: \(headers)")
                 isConnected = true
+                // send registration message
+                let registerMessage = RegisterMessage(
+                    type: .register,
+                    user: User(username: NSUserName(), fullname: NSFullUserName())
+                )
+                self.sendMessage(registerMessage)
             case .disconnected(_, _):
+                isConnected = false
+            case .peerClosed:
+                isConnected = false
+            case .cancelled:
                 isConnected = false
             case .text(let text):
                 // parse text as json 
@@ -172,7 +182,6 @@ struct ChatView: View {
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
             if !isConnected {
                 print("Disconnected. attempting to reconnect...")
-                // FIXME: This doesn't work. probably need to make a new websocket object
                 self.reconnect()
             }
         }

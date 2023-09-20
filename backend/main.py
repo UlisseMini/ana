@@ -24,7 +24,9 @@ def setup_db(conn):
         c.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                username TEXT,
+                fullname TEXT
             )
         """)
         c.execute("""
@@ -50,6 +52,7 @@ def setup_db(conn):
 
                 app TEXT,
                 window_title TEXT,
+                time INTEGER, -- epoch time, from swift
                 -- TODO add more fields for tracking activity
 
                 FOREIGN KEY (user_id) REFERENCES users(id)
@@ -174,7 +177,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
     # TODO: These should all be stored in the database
-    user = None # {"user_id": 1, ...}
     activity = [] # [{"type": "activity", "app": "ITerm", "window_title": "zsh", "time": <EPOCH>}]
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     check_in_every = 60
@@ -185,13 +187,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
     encourage_every = 10
 
-    # TODO: User registration (not needed for testing)
-    # data = json.loads(await websocket.receive_text())
-    # if data['type'] == 'register':
-    #     print(f"registering user {data}")
-    #     user = data['user']
-    # else:
-    #     raise ValueError(f"message type {data['type']} disallowed for first message")
+    data = json.loads(await websocket.receive_text())
+    if data['type'] == 'register':
+        print(f"registering user {data}")
+        user = data['user']
+        # plop into database
+        c = app.state.db.cursor()
+        c.execute("INSERT INTO users (username, fullname) VALUES (?, ?)", (user['username'], user['fullname']))
+        app.state.db.commit()
+        user_id = c.lastrowid
+    else:
+        raise ValueError(f"message type {data['type']} disallowed for first message")
 
 
     last_check_in = 0
@@ -199,6 +205,11 @@ async def websocket_endpoint(websocket: WebSocket):
         data = json.loads(await websocket.receive_text())
         print('received', data)
         if data['type'] == 'activity_info':
+            # insert activity into database
+            c = app.state.db.cursor()
+            c.execute("INSERT INTO activity (user_id, app, window_title, time) VALUES (?, ?, ?, ?)", (user_id, data['app'], data['window_title'], data['time']))
+            app.state.db.commit()
+
             activity.append(data)
             if time.time() - last_check_in > check_in_every:
                 last_check_in = time.time()
@@ -233,6 +244,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     print(messages)
 
         elif data['type'] == 'msg': # reply to the user
+            # save message  to db
+            c = app.state.db.cursor()
+            c.execute("INSERT INTO messages (user_id, content, role) VALUES (?, ?, ?)", (user_id, data['content'], data['role']))
+            app.state.db.commit()
+
             messages.append({"role": "user", "content": data['content']})
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -272,10 +288,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"type": "msg", **message}))
                 messages.append(message)
 
-
-        # TODO: Handle changing of check_in_every
-
-        await asyncio.sleep(1)
 
 
 app.mount("/", StaticFiles(directory="static", html=True))
