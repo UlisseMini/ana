@@ -136,6 +136,10 @@ struct ChatView: View {
             case .connected(let headers):
                 print("connected, headers: \(headers)")
                 isConnected = true
+
+                // clear messages, server will send us the history
+                chatHistory.messages = []
+
                 // send registration message
                 let registerMessage = RegisterMessage(
                     type: .register,
