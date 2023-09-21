@@ -89,14 +89,16 @@ struct ChatView: View {
     @State private var isConnected: Bool = false
     @FocusState private var isTextFieldFocused: Bool
 
+    @ObservedObject var settings: Settings
+
     private let encoder = JSONEncoder()
 
-    init(chatHistory ch: ChatHistory) {
+    init(chatHistory ch: ChatHistory, settings: Settings) {
         ws = WebSocket(request: URLRequest(url: wsURL()))
         chatHistory = ch
-        encoder.keyEncodingStrategy = .convertToSnakeCase // interop with python
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        self.settings = settings
     }
-
 
     var messages: [ChatMessage] {
         chatHistory.messages
@@ -200,6 +202,8 @@ struct ChatView: View {
                         time: Int(Date().timeIntervalSince1970)
                     )
                     self.sendMessage(activityInfo)
+                    print(settings.timesinks)
+                    print(settings.endorsedActivities)
                     lastWindowTitle = windowTitle
                 }
             }
@@ -283,12 +287,28 @@ struct ChatView: View {
 }
 
 struct SettingsView: View {
+    @ObservedObject var settings: Settings
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Settings Pane")
-                .font(.largeTitle)
-            Text("Placeholder Text for Settings")
-                .font(.body)
+        HStack {
+            VStack(spacing: 20) {
+                Text("Timesinks")
+                    .font(.title)
+                TextEditor(text: $settings.timesinks)
+                    .frame(minHeight: 100)
+                    .background(Color.gray)
+                    .cornerRadius(10)
+                    .padding()
+            }
+            VStack(spacing: 20) {
+                Text("Endorsed Activities")
+                    .font(.title)
+                TextEditor(text: $settings.endorsedActivities)
+                    .frame(minHeight: 100)
+                    .background(Color.gray)
+                    .cornerRadius(10)
+                    .padding()
+            }
         }
         .padding()
     }
@@ -304,25 +324,31 @@ class ChatHistory: ObservableObject {
     }
 }
 
+class Settings: ObservableObject {
+    @Published var timesinks: String = ""
+    @Published var endorsedActivities: String = ""
+}
 
 
 @main
 struct bossgptApp: App {
     @StateObject var chatHistory = ChatHistory()
+    @StateObject var settings = Settings() // <-- add this
     
     var body: some Scene {
         WindowGroup {
             NavigationView {
                 List {
-                    NavigationLink(destination: ChatView(chatHistory: chatHistory)) {
+                    NavigationLink(destination: ChatView(chatHistory: chatHistory, settings: settings)) {
                         Label("Chat", systemImage: "message")
                     }
-                    NavigationLink(destination: SettingsView()) {
+                    NavigationLink(destination: SettingsView(settings: settings)) { // <-- add this
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
-                ChatView(chatHistory: chatHistory)
+                ChatView(chatHistory: chatHistory, settings: settings) // <-- add this
             }
+            .environmentObject(settings) // <-- add this
         }
     }
 }
