@@ -104,15 +104,22 @@ struct ChatView: View {
         chatHistory.messages
     }
 
-    private func handleMessage(message: MsgMessage) {
+    private func handleMessage(data: Data) throws {
+        let message = try JSONDecoder().decode(BaseMessage.self, from: data)
         switch message.type {
-        case .msg:
-            addMessage(from: message.role, message: message.content)
-        case .activityInfo:
-            // print error; server shouldn't send us activity info
-            print("ERROR: Received activity info from server")
-        default:
-            print("Unknown message type: \(message.type)")
+            case .msg:
+                let message = try JSONDecoder().decode(MsgMessage.self, from: data)
+                addMessage(from: message.role, message: message.content)
+            case .activityInfo:
+                // print error; server shouldn't send us activity info
+                print("ERROR: Received activity info from server")
+            case .settings:
+                let message = try JSONDecoder().decode(SettingsMessage.self, from: data)
+                settings.endorsedActivities = message.endorsed_activities
+                settings.timesinks = message.timesinks
+
+            default:
+                print("Unknown message type: \(message.type)")
         }
     }
 
@@ -156,10 +163,9 @@ struct ChatView: View {
                 // parse text as json 
                 if let jsonData = text.data(using: .utf8) {
                     do {
-                        let message = try JSONDecoder().decode(MsgMessage.self, from: jsonData)
-                        handleMessage(message: message)
+                        try handleMessage(data: jsonData)
                     } catch {
-                        print("Error decoding JSON: \(error)")
+                        print("Error handling message \(text): \(error)")
                     }
                 }
             case .error(let error):

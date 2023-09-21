@@ -52,11 +52,23 @@ def setup_db(conn):
 
                 app TEXT,
                 window_title TEXT,
-                time INTEGER, -- epoch time, from swift
+                time INTEGER NOT NULL, -- epoch time, from swift
                 -- TODO add more fields for tracking activity
 
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            user_id INTEGER,
+
+            timesinks TEXT,
+            endorsed_activities TEXT,
+
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
         """)
 
 
@@ -147,19 +159,6 @@ async def webhook_received(request: Request):
 
 
 
-
-@app.get("/chat")
-def chat(user_id: int):
-    "base level route, a direct proxy to the openai api"
-    pass
-
-
-@app.get("/activity")
-def activity():
-    "user activity tracking. stored in the db so the AI can learn"
-    return "Not implemented"
-
-
 SYSTEM_PROMPT = """
 You are a productivity assistant who only interrupts if a user is definitely distracted from their task (e.g. on social media). If they are definitely distracted, kindly try and motivate them to work. Otherwise, affirm on-task activity with "Great work!" and nothing else. Adapt when the user updates their preferences.
 
@@ -174,17 +173,218 @@ Hi there! what do you want to work on right now? I can help you stay on task and
 client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}, timeout=100)
 
 
-# TODO: Make more sophisticated. exists to avoid ctx length errors
-# and to avoid repetition 
-def distill_history(messages):
-    # keep [sys, initial, preferences] and last 3 checkins (activity, assistant) assuming no user response.
-    return messages[:3] + messages[-6:] if len(messages) > 9 else messages
+TRIGGER_PROMPT = """
+If the user is on a timesink, then trigger the app. Otherwise, do nothing.
+The user's time sinks are:
+{timesinks}
+
+Over the last {minutes} minutes the user's activity has been:
+{activity}
+""".strip()
+
+
+async def should_trigger(prompt: str) -> bool:
+    print('trigger prompt:\n', prompt)
+    messages = [{'role': 'system', 'content': prompt}]
+    resp = await client.post(
+        "https://api.openai.com/v1/chat/completions",
+        json={
+            "model": "gpt-3.5-turbo",
+            "messages": messages,
+            "functions": [
+                {
+                    "name": "trigger",
+                    "description": "Trigger the app",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                }
+            ],
+            "max_tokens": 100,
+        }
+    )
+    resp.raise_for_status()
+    resp_data = resp.json()
+    message = resp_data['choices'][0]['message']
+    # trigger iff the message is a function call to trigger
+    trigger = bool(message.get("function_call") and message["function_call"]["name"] == 'trigger')
+    print('trigger:', trigger)
+    return trigger
+
+
+class WebSocketHandler():
+    """
+    Web socket handler, one per connection. Handles
+    * Keeping client, server, and database in sync
+    * Querying GPT for triggers and sending messages when required
+    """
+
+    def __init__(self, ws, db):
+        self.ws = ws
+        self.db = db
+        self.user_id = None
+
+
+    def record_msg(self, msg):
+        self.db.execute("INSERT INTO messages (user_id, content, role) VALUES (?, ?, ?)", (self.user_id, msg['content'], msg['role']))
+        self.db.commit()
+
+    def record_activity(self, data):
+        c = self.db.cursor()
+        c.execute("INSERT INTO activity (user_id, app, window_title, time) VALUES (?, ?, ?, ?)", (self.user_id, data['app'], data['window_title'], data['time']))
+        self.db.commit()
+
+
+    async def send_msg(self, msg):
+        await self.ws.send_json(msg)
+
+
+    async def send_and_record_msg(self, msg):
+        self.record_msg(msg)
+        await self.send_msg(msg)
+
+
+    async def on_register(self, data):
+        print(f"registering user {data}")
+        user = data['user']
+        # plop into database
+        c = self.db.cursor()
+        c.execute("""
+            INSERT INTO users (username, fullname)
+            SELECT ?, ?
+            WHERE NOT EXISTS(SELECT 1 FROM users WHERE username = ?)
+        """, (user['username'], user['fullname'], user['username']))
+        self.user_id = c.lastrowid
+        assert self.user_id is not None
+
+        # add empty settings row if it doesn't exist
+        c.execute("""
+            INSERT INTO settings (user_id)
+            SELECT ?
+            WHERE NOT EXISTS(SELECT 1 FROM settings WHERE user_id = ?)
+        """, (self.user_id, self.user_id))
+
+        # fetch 100 most recent messages & shove into client
+        c.execute("SELECT id, role, content FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100", (self.user_id,))
+        # must send in reversed order because we want to send oldest first
+        for _, role, content in reversed(c.fetchall()):
+            await self.send_msg({"type": "msg", "role": role, "content": content})
+
+        print(f"done registering {data} user id {self.user_id}")
+
+
+    async def receive(self, timeout=10):
+        try:
+            text = await asyncio.wait_for(self.ws.receive_text(), timeout=timeout)
+            return json.loads(text)
+        except asyncio.TimeoutError:
+            return None
+
+
+    @staticmethod
+    def add_activity_dur(activities):
+        # prevent IndexErrors
+        if len(activities) == 0:
+            return activities
+        # add time spent on each app by subtracting the time of the next app from the time of the current app
+        for i in range(len(activities) - 1):
+            activities[i]['dur'] = activities[i]['time'] - activities[i+1]['time']
+        # add time spent on last app by subtracting the time of the last app from now
+        activities[-1]['dur'] = time.time() - activities[-1]['time']
+        return activities
+
+
+    async def check_in(self, max_n=20, last_n_seconds=600):
+        print('checking in...')
+        # get the activites from user in the last 10 minutes (n secnods)
+        now = time.time()
+        c = self.db.cursor()
+        c.execute(
+            f"SELECT app, window_title, time FROM activity WHERE user_id = ? AND time > ? ORDER BY time DESC LIMIT ?",
+            (self.user_id, now - last_n_seconds, max_n)
+        )
+        activities = [{"app": app, "window_title": window_title, "time": time} for app, window_title, time in c.fetchall()]
+        self.add_activity_dur(activities)
+        # filter things with < 10s of activity
+        activities = [a for a in activities if a['dur'] > 10]
+
+        timesinks: str = (await self.get_settings()).get('timesinks') or ''
+        activity = '\n'.join(f"{a['dur']/60:.1f} minutes on {a['app']} - {a['window_title']}" for a in activities)
+        if timesinks.strip() == '':
+            print('no timesinks recorded yet')
+            return
+
+        trigger = await should_trigger(TRIGGER_PROMPT.format(minutes=last_n_seconds//60, timesinks=timesinks, activity=activity))
+        if trigger:
+            # TODO: send GPT4 response
+            await self.send_and_record_msg({"role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
+
+
+    async def update_settings(self, settings_msg):
+        print('updating settings', settings_msg)
+        # insert timesinks data into database. we don't delete anything.
+        timesinks: str = settings_msg["timesinks"]
+        endorsed_activities: str = settings_msg["endorsed_activities"]
+        c = self.db.cursor()
+        c.execute("INSERT INTO settings (user_id, timesinks, endorsed_activities) VALUES (?, ?, ?)", (self.user_id, timesinks, endorsed_activities))
+        self.db.commit()
+
+
+    async def get_settings(self):
+        assert self.user_id is not None, "user must be registered before getting settings"
+        # fetch most recent settings from that user id
+        c = self.db.cursor()
+        c.execute("SELECT timesinks, endorsed_activities FROM settings WHERE user_id = ? ORDER BY id DESC LIMIT 1", (self.user_id,))
+        settings = c.fetchone()
+        if not settings:
+            raise ValueError(f"user {self.user_id} doesn't have settings yet")
+        return {"timesinks": settings[0], "endorsed_activities": settings[1]}
+
+
+    async def run(self):
+        await self.ws.accept()
+
+        # get registration
+        data = await self.ws.receive_json()
+        if data['type'] == 'register':
+            await self.on_register(data)
+        else:
+            raise ValueError(f"message type {data['type']} disallowed for first message")
+
+        check_in_interval = 30
+        last_check_in = time.time()
+
+        while True:
+            data = await self.receive(timeout=10)
+            if not data:
+                if time.time() - last_check_in > check_in_interval:
+                    await self.check_in(last_n_seconds=check_in_interval)
+
+                continue
+
+            if data['type'] == 'activity_info':
+                print('activity', data)
+                self.record_activity(data)
+            elif data['type'] == 'msg':
+                self.record_msg(data)
+                await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "foo!"})
+            elif data['type'] == 'settings':
+                await self.update_settings(data)
+            else:
+                raise ValueError(f"Unknown message type: {data['type']}")
+
 
 
 # TODO: Move all this websocket logic to a class so I can use methods
 # instead of repeating the same logic all over the place.
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    handler = WebSocketHandler(websocket, app.state.db)
+    await handler.run()
+    return
+
     await websocket.accept()
 
     # TODO: These should all be stored in the database
@@ -205,20 +405,14 @@ async def websocket_endpoint(websocket: WebSocket):
     temperature = 0.5
 
     data = json.loads(await websocket.receive_text())
-    if data['type'] == 'register':
-        print(f"registering user {data}")
-        user = data['user']
-        # plop into database
-        c = app.state.db.cursor()
-        c.execute("INSERT INTO users (username, fullname) VALUES (?, ?)", (user['username'], user['fullname']))
-        app.state.db.commit()
-        user_id = c.lastrowid
-    else:
-        raise ValueError(f"message type {data['type']} disallowed for first message")
+
+    # after registration send all the previous messages
+    for message in messages[1:]:
+        await websocket.send_json({"type": "msg", **message})
 
     # after registration send a hardcoded initial message
-    messages.append({"role": "assistant", "content": INITIAL_MESSAGE})
-    await websocket.send_json({"type": "msg", **messages[-1]})
+    # messages.append({"role": "assistant", "content": INITIAL_MESSAGE})
+    # await websocket.send_json({"type": "msg", **messages[-1]})
 
 
     last_check_in = 0

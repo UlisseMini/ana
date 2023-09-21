@@ -1,3 +1,4 @@
+// TODO: Better types. this is essentially c code, yuck
 import Foundation
 
 enum NotificationOptions: String, Codable {
