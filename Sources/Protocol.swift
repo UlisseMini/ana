@@ -5,7 +5,7 @@ enum NotificationOptions: String, Codable {
 }
 
 enum MessageType: String, Codable {
-    case register, activityInfo = "activity_info", msg
+    case register, activityInfo = "activity_info", msg, settings
 }
 
 struct BaseMessage: Codable {
@@ -36,3 +36,8 @@ struct MsgMessage: Codable {
     let notifOpts: [NotificationOptions]?
 }
 
+struct SettingsMessage: Codable {
+    let type: MessageType
+    let timesinks: String
+    let endorsed_activities: String
+}

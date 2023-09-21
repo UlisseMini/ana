@@ -189,6 +189,8 @@ struct ChatView: View {
         }
 
         var lastWindowTitle: String?
+        var last_timesinks: String?
+        var last_endorsedActivities: String?
 
         Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { timer in
             if let window = getActiveWindow() {
@@ -202,9 +204,18 @@ struct ChatView: View {
                         time: Int(Date().timeIntervalSince1970)
                     )
                     self.sendMessage(activityInfo)
-                    print(settings.timesinks)
-                    print(settings.endorsedActivities)
                     lastWindowTitle = windowTitle
+                }
+                if settings.timesinks != last_timesinks || settings.endorsedActivities != last_endorsedActivities {
+                    print("Sending timesinks: \(settings.timesinks)")
+                    let set_msg = SettingsMessage(
+                        type: .settings,
+                        timesinks: settings.timesinks,
+                        endorsed_activities: settings.endorsedActivities
+                    )
+                    self.sendMessage(set_msg)
+                    last_timesinks = settings.timesinks
+                    last_endorsedActivities = settings.endorsedActivities
                 }
             }
         }
