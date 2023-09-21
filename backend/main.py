@@ -10,6 +10,11 @@ import time
 import random
 import asyncio
 
+# run source ../.env to get path variables
+from dotenv import load_dotenv
+load_dotenv('../.env')
+
+
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 stripe.api_key = os.environ["STRIPE_API_KEY"]
 HOST = os.environ["HOST"]
