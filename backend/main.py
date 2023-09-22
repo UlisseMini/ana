@@ -162,17 +162,6 @@ async def webhook_received(request: Request):
 
 
 
-SYSTEM_PROMPT = """
-You are a productivity assistant who only interrupts if a user is definitely distracted from their task (e.g. on social media). If they are definitely distracted, kindly try and motivate them to work. Otherwise, affirm on-task activity with "Great work!" and nothing else. Adapt when the user updates their preferences.
-
-After the user specifies their goal, encourage them and tell them how often you'll be checking in on them, and ask if they want to change how frequently you check in.
-""".strip()
-
-INITIAL_MESSAGE = """
-Hi there! what do you want to work on right now? I can help you stay on task and be more productive!
-""".strip()
-
-
 client = httpx.AsyncClient(
     base_url="https://api.openai.com",
     headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
@@ -180,6 +169,26 @@ client = httpx.AsyncClient(
 )
 
 
+# Respond to trigger of time sink
+ON_TRIGGER_PROMPT = """
+You are a helpful assistant that helps the user manage their time.
+
+Over the last {minutes} minutes the user's activity has been:
+{activity}
+
+The user's common time sinks are:
+{timesinks}
+
+And the user's common endorsed activities are:
+{endorsed_activities}
+
+Collaboratively help the user find an alternative to the time sink they are currently on, but only if they want to.
+""".strip()
+
+# Respond to user normally (TODO)
+RESPOND_PROMPT = """
+You are a helpful assistant.
+""".strip()
 
 # call the trigger function with "trigger": true or "trigger": false
 TRIGGER_PROMPT = """
@@ -358,8 +367,12 @@ class WebSocketHandler():
 
         trigger = await should_trigger(TRIGGER_PROMPT.format(minutes=last_n_seconds//60, timesinks=timesinks, activity=activity))
         if trigger:
-            # TODO: send GPT4 response
-            await self.send_and_record_msg({"role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
+            await self.on_trigger()
+
+
+    async def on_trigger(self):
+        await self.send_and_record_msg({"role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
+
 
 
     async def update_settings(self, settings_msg):
@@ -385,10 +398,12 @@ class WebSocketHandler():
 
     async def respond_to_msg(self, msg):
         # use gpt4 to respond given the recent message history and context about their settings.
+        # TODO: use settings to give gpt4 additional context
         settings = await self.get_settings()
 
         # get recent messages
         messages = self.get_messages(limit=30)
+        messages = [{'role': 'system', 'content': RESPOND_PROMPT}] + messages
 
         resp = await client.post(
             "/v1/chat/completions",
