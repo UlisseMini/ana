@@ -59,11 +59,29 @@ func requestScreenRecordingPermission() {
     let _ = CGWindowListCreateImage(screenBounds, .optionOnScreenBelowWindow, kCGNullWindowID, .bestResolution)
 }
 
+func checkIfAppIsActiveWindow() -> Bool{
+    let appName = Bundle.main.infoDictionary![kCFBundleNameKey as String] as! String
+    if let window = getActiveWindow() {
+        let app = window["kCGWindowOwnerName"] as? String
+        if app == appName {
+            return true
+        } else {
+            return false
+        }
+    } else {
+        return false
+    }
+}
+
 func showNotification(
     title: String,
     body: String,
     options: UNAuthorizationOptions = [.alert, .sound]
 ) {
+    if checkIfAppIsActiveWindow() {
+        return
+    }
+    
     UNUserNotificationCenter.current().requestAuthorization(options: options) { granted, _ in
         print("Permission granted: \(granted)")
         guard granted else { return }
