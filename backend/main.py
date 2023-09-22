@@ -267,7 +267,7 @@ class WebSocketHandler():
         c = self.db.cursor()
         c.execute("""
             INSERT INTO users (username)
-            SELECT ?, ?
+            SELECT ?
             WHERE NOT EXISTS(SELECT 1 FROM users WHERE username = ?)
         """, (user['username'], user['username']))
         self.user_id = c.lastrowid
