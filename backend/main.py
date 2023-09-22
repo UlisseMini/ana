@@ -30,8 +30,7 @@ def setup_db(conn):
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                username TEXT,
-                fullname TEXT
+                username TEXT
             )
         """)
         c.execute("""
@@ -178,8 +177,10 @@ Hi there! what do you want to work on right now? I can help you stay on task and
 client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}, timeout=100)
 
 
+
+# call the trigger function with "trigger": true or "trigger": false
 TRIGGER_PROMPT = """
-If the user is on a timesink, then trigger the app. Otherwise, do nothing.
+If the user is on a timesink, then trigger the app. Otherwise, pass false to do nothing.
 The user's time sinks are:
 {timesinks}
 
@@ -188,22 +189,28 @@ Over the last {minutes} minutes the user's activity has been:
 """.strip()
 
 
-async def should_trigger(prompt: str) -> bool:
+# function to determine whether to trigger the app or not
+def should_trigger(prompt: str) -> bool:
     print('trigger prompt:\n', prompt)
     messages = [{'role': 'system', 'content': prompt}]
-    resp = await client.post(
+    resp = client.post(
         "https://api.openai.com/v1/chat/completions",
         json={
             "model": "gpt-3.5-turbo",
             "messages": messages,
             "functions": [
                 {
+                    # this should be either True or False, always called.
                     "name": "trigger",
-                    "description": "Trigger the app",
+                    "description": "If true, trigger the app. If false, do nothing.",
                     "parameters": {
                         "type": "object",
-                        "properties": {},
-                        "required": [],
+                        "properties": {
+                            "trigger": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["trigger"],
                     },
                 }
             ],
@@ -214,7 +221,9 @@ async def should_trigger(prompt: str) -> bool:
     resp_data = resp.json()
     message = resp_data['choices'][0]['message']
     # trigger iff the message is a function call to trigger
-    trigger = bool(message.get("function_call") and message["function_call"]["name"] == 'trigger')
+    trigger = False
+    if message.get("function_call") and message["function_call"]["name"] == 'trigger':
+        trigger = message["function_call"]["arguments"]["trigger"]
     print('trigger:', trigger)
     return trigger
 
@@ -257,10 +266,10 @@ class WebSocketHandler():
         # plop into database
         c = self.db.cursor()
         c.execute("""
-            INSERT INTO users (username, fullname)
+            INSERT INTO users (username)
             SELECT ?, ?
             WHERE NOT EXISTS(SELECT 1 FROM users WHERE username = ?)
-        """, (user['username'], user['fullname'], user['username']))
+        """, (user['username'], user['username']))
         self.user_id = c.lastrowid
         assert self.user_id is not None
 
@@ -388,7 +397,7 @@ class WebSocketHandler():
 async def websocket_endpoint(websocket: WebSocket):
     handler = WebSocketHandler(websocket, app.state.db)
     await handler.run()
-    return
+    # return
 
     await websocket.accept()
 

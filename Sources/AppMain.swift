@@ -2,6 +2,8 @@ import SwiftUI
 import Foundation
 import UserNotifications
 import Starscream
+import IOKit
+
 
 
 // Hides outline around textbox
@@ -15,7 +17,27 @@ extension NSTextField {
 
 // --------------- Utility Functions ---------------
 
- 
+
+func getUniqueMachineID() -> String? {
+    let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+    
+    if platformExpert == IO_OBJECT_NULL {
+        return nil
+    }
+    
+    guard let serialNumberAsCFString = IORegistryEntryCreateCFProperty(platformExpert, "IOPlatformUUID" as CFString, kCFAllocatorDefault, 0) else {
+        IOObjectRelease(platformExpert)
+        return nil
+    }
+
+    let serialNumber = serialNumberAsCFString.takeRetainedValue() as? String
+    
+    IOObjectRelease(platformExpert)
+    
+    return serialNumber
+}
+
+
 func getActiveWindow() -> [String: Any]? {
     if let frontmostApp = NSWorkspace.shared.frontmostApplication {
         let frontmostAppPID = frontmostApp.processIdentifier
@@ -147,10 +169,11 @@ struct ChatView: View {
                 // clear messages, server will send us the history
                 chatHistory.messages = []
 
+
                 // send registration message
                 let registerMessage = RegisterMessage(
                     type: .register,
-                    user: User(username: NSUserName(), fullname: NSFullUserName())
+                    user: User(username: getUniqueMachineID()!)
                 )
                 self.sendMessage(registerMessage)
             case .disconnected(_, _):

@@ -15,7 +15,6 @@ struct BaseMessage: Codable {
 
 struct User: Codable {
     let username: String
-    let fullname: String
 }
 
 struct RegisterMessage: Codable {
