@@ -14,7 +14,7 @@ struct BaseMessage: Codable {
 }
 
 struct User: Codable {
-    let username: String
+    let machine_id: String
 }
 
 struct RegisterMessage: Codable {
