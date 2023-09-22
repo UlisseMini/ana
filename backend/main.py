@@ -7,7 +7,6 @@ import os
 import json
 import httpx
 import time
-import random
 import asyncio
 
 # run source ../.env to get path variables
@@ -174,7 +173,11 @@ Hi there! what do you want to work on right now? I can help you stay on task and
 """.strip()
 
 
-client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}, timeout=100)
+client = httpx.AsyncClient(
+    base_url="https://api.openai.com",
+    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+    timeout=100,
+)
 
 
 
@@ -192,9 +195,9 @@ Over the last {minutes} minutes the user's activity has been:
 # function to determine whether to trigger the app or not
 async def should_trigger(prompt: str) -> bool:
     print('trigger prompt:\n', prompt)
-    messages = [{'role': 'system', 'content': prompt}]
+    messages = [{'role': 'user', 'content': prompt}]
     resp = await client.post(
-        "https://api.openai.com/v1/chat/completions",
+        "/v1/chat/completions",
         json={
             "model": "gpt-3.5-turbo",
             "messages": messages,
@@ -223,8 +226,14 @@ async def should_trigger(prompt: str) -> bool:
     # trigger iff the message is a function call to trigger
     trigger = False
     if message.get("function_call") and message["function_call"]["name"] == 'trigger':
-        trigger = message["function_call"]["arguments"]["trigger"]
-    print('trigger:', trigger)
+        # TypeError: string indices must be integers
+        try:
+            arguments = json.loads(message["function_call"]["arguments"])
+            trigger = arguments["trigger"]
+        except json.JSONDecodeError:
+            pass
+    else:
+        print('WARNING: no trigger call')
     return trigger
 
 
@@ -239,6 +248,15 @@ class WebSocketHandler():
         self.ws = ws
         self.db = db
         self.user_id = None
+
+
+    # TODO: Consistent names for db functions
+
+    def get_messages(self, limit=100):
+        "Get the most recent n messages in reverse-chronological order"
+        c = self.db.cursor()
+        c.execute("SELECT role, content FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT ?", (self.user_id, limit))
+        return [{"role": role, "content": content} for role, content in reversed(c.fetchall())]
 
 
     def record_msg(self, msg):
@@ -283,10 +301,8 @@ class WebSocketHandler():
             self.db.commit()
 
         # fetch 100 most recent messages & shove into client
-        c.execute("SELECT id, role, content FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100", (self.user_id,))
-        # must send in reversed order because we want to send oldest first
-        for _, role, content in reversed(c.fetchall()):
-            await self.send_msg({"type": "msg", "role": role, "content": content})
+        for msg in self.get_messages(limit=100):
+            await self.send_msg({"type": "msg", **msg})
 
         print(f"done registering {data} user id {self.user_id}")
 
@@ -367,6 +383,23 @@ class WebSocketHandler():
         return {"timesinks": settings[0], "endorsed_activities": settings[1]}
 
 
+    async def respond_to_msg(self, msg):
+        # use gpt4 to respond given the recent message history and context about their settings.
+        settings = await self.get_settings()
+
+        # get recent messages
+        messages = self.get_messages(limit=30)
+
+        resp = await client.post(
+            "/v1/chat/completions",
+            json={"model": "gpt-3.5-turbo", "messages": messages}
+        )
+        resp.raise_for_status()
+        resp_json = resp.json()
+        message = resp_json['choices'][0]['message']
+        await self.send_and_record_msg({"type": "msg", **message})
+
+
     async def run(self):
         await self.ws.accept()
 
@@ -392,7 +425,7 @@ class WebSocketHandler():
                 self.record_activity(data)
             elif data['type'] == 'msg':
                 self.record_msg(data)
-                await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "TODO: respond"})
+                await self.respond_to_msg(data)
             elif data['type'] == 'settings':
                 await self.update_settings(data)
             else:
