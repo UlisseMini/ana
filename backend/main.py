@@ -29,8 +29,8 @@ def setup_db(conn):
         c.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                username TEXT
+                machine_id TEXT UNIQUE, -- globally unique machine id
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         c.execute("""
@@ -181,7 +181,7 @@ client = httpx.AsyncClient(headers={"Authorization": f"Bearer {OPENAI_API_KEY}"}
 # call the trigger function with "trigger": true or "trigger": false
 TRIGGER_PROMPT = """
 If the user is on a timesink, then trigger the app. Otherwise, pass false to do nothing.
-The user's time sinks are:
+The user's common time sinks are:
 {timesinks}
 
 Over the last {minutes} minutes the user's activity has been:
@@ -190,10 +190,10 @@ Over the last {minutes} minutes the user's activity has been:
 
 
 # function to determine whether to trigger the app or not
-def should_trigger(prompt: str) -> bool:
+async def should_trigger(prompt: str) -> bool:
     print('trigger prompt:\n', prompt)
     messages = [{'role': 'system', 'content': prompt}]
-    resp = client.post(
+    resp = await client.post(
         "https://api.openai.com/v1/chat/completions",
         json={
             "model": "gpt-3.5-turbo",
@@ -263,22 +263,24 @@ class WebSocketHandler():
     async def on_register(self, data):
         print(f"registering user {data}")
         user = data['user']
-        # plop into database
+        # plop into database if not already there
         c = self.db.cursor()
-        c.execute("""
-            INSERT INTO users (username)
-            SELECT ?, ?
-            WHERE NOT EXISTS(SELECT 1 FROM users WHERE username = ?)
-        """, (user['username'], user['username']))
-        self.user_id = c.lastrowid
+        c.execute(
+            "INSERT OR IGNORE INTO users (machine_id) VALUES (?)",
+            (user['machine_id'],)
+        )
+        self.user_id, = c.execute("SELECT id FROM users WHERE machine_id = ?", (user['machine_id'],)).fetchone()
         assert self.user_id is not None
 
         # add empty settings row if it doesn't exist
-        c.execute("""
-            INSERT INTO settings (user_id)
-            SELECT ?
-            WHERE NOT EXISTS(SELECT 1 FROM settings WHERE user_id = ?)
-        """, (self.user_id, self.user_id))
+        settings = None
+        try:
+            settings = await self.get_settings()
+            # send settings to client
+            await self.send_msg({"type": "settings", **settings})
+        except KeyError:
+            c.execute("INSERT INTO settings (user_id) VALUES (?)", (self.user_id,))
+            self.db.commit()
 
         # fetch 100 most recent messages & shove into client
         c.execute("SELECT id, role, content FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT 100", (self.user_id,))
@@ -315,17 +317,25 @@ class WebSocketHandler():
         # get the activites from user in the last 10 minutes (n secnods)
         now = time.time()
         c = self.db.cursor()
-        c.execute(
+        rows = c.execute(
             f"SELECT app, window_title, time FROM activity WHERE user_id = ? AND time > ? ORDER BY time DESC LIMIT ?",
             (self.user_id, now - last_n_seconds, max_n)
-        )
-        activities = [{"app": app, "window_title": window_title, "time": time} for app, window_title, time in c.fetchall()]
+        ).fetchall()
+        if len(rows) == 0:
+            # just put most recent activity
+            rows = c.execute(f"SELECT app, window_title, time FROM activity WHERE user_id = ? ORDER BY time DESC LIMIT 1", (self.user_id,)).fetchall()
+        activities = [{"app": app, "window_title": window_title, "time": time} for app, window_title, time in rows]
+
         self.add_activity_dur(activities)
         # filter things with < 10s of activity
-        activities = [a for a in activities if a['dur'] > 10]
+        # activities = [a for a in activities if a['dur'] > 10]
 
         timesinks: str = (await self.get_settings()).get('timesinks') or ''
-        activity = '\n'.join(f"{a['dur']/60:.1f} minutes on {a['app']} - {a['window_title']}" for a in activities)
+        if timesinks.strip() == '':
+            print('No time sinks yet -- skipping check in')
+            return
+
+        activity = '\n'.join(f"{a['dur']:.0f} seconds on {a['app']} - {a['window_title']}" for a in activities)
         if timesinks.strip() == '':
             print('no timesinks recorded yet')
             return
@@ -353,7 +363,7 @@ class WebSocketHandler():
         c.execute("SELECT timesinks, endorsed_activities FROM settings WHERE user_id = ? ORDER BY id DESC LIMIT 1", (self.user_id,))
         settings = c.fetchone()
         if not settings:
-            raise ValueError(f"user {self.user_id} doesn't have settings yet")
+            raise KeyError(f"user {self.user_id} doesn't have settings yet")
         return {"timesinks": settings[0], "endorsed_activities": settings[1]}
 
 
@@ -367,7 +377,7 @@ class WebSocketHandler():
         else:
             raise ValueError(f"message type {data['type']} disallowed for first message")
 
-        check_in_interval = 30
+        check_in_interval = 300
         last_check_in = time.time()
 
         while True:
@@ -379,11 +389,10 @@ class WebSocketHandler():
                 continue
 
             if data['type'] == 'activity_info':
-                print('activity', data)
                 self.record_activity(data)
             elif data['type'] == 'msg':
                 self.record_msg(data)
-                await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "foo!"})
+                await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "TODO: respond"})
             elif data['type'] == 'settings':
                 await self.update_settings(data)
             else:
@@ -391,149 +400,10 @@ class WebSocketHandler():
 
 
 
-# TODO: Move all this websocket logic to a class so I can use methods
-# instead of repeating the same logic all over the place.
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     handler = WebSocketHandler(websocket, app.state.db)
     await handler.run()
-    # return
-
-    await websocket.accept()
-
-    # TODO: These should all be stored in the database
-    activity = [] # [{"type": "activity", "app": "ITerm", "window_title": "zsh", "time": <EPOCH>}]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    check_in_every = 300
-    def change_checkin(new_interval):
-        if new_interval < 30:
-            return {"role": "assistant", "content": "Sorry, I can't check in that often or Uli will go bankrupt. Please select a longer interval."}
-
-        nonlocal check_in_every
-        check_in_every = new_interval
-        return {"role": "assistant", "content": f"Changed checkin interval to {check_in_every} seconds."}
-
-    # set to around 10 minutes, depending on how often we're checking in
-    encourage_every = round(check_in_every/60 * 10)
-
-    temperature = 0.5
-
-    data = json.loads(await websocket.receive_text())
-
-    # after registration send all the previous messages
-    for message in messages[1:]:
-        await websocket.send_json({"type": "msg", **message})
-
-    # after registration send a hardcoded initial message
-    # messages.append({"role": "assistant", "content": INITIAL_MESSAGE})
-    # await websocket.send_json({"type": "msg", **messages[-1]})
-
-
-    last_check_in = 0
-    while True:
-        # TODO: Cleanup this mess. only here to make sure we don't miss any activities
-        # by becoming stuck waiting for a title change.
-        try:
-            text = await asyncio.wait_for(websocket.receive_text(), timeout=5)
-            data = json.loads(text)
-            print('received', data)
-        except asyncio.TimeoutError:
-            if len(activity) > 0:
-                # normally time.time() first but if the activity is fresh it's the same
-                checked_last_time = activity[-1]['time'] - last_check_in > check_in_every and len(messages) > 3
-                if not checked_last_time:
-                    data = activity[-1]
-                else:
-                    continue
-
-        if data['type'] == 'activity_info':
-            # insert activity into database
-            c = app.state.db.cursor()
-            c.execute("INSERT INTO activity (user_id, app, window_title, time) VALUES (?, ?, ?, ?)", (user_id, data['app'], data['window_title'], data['time']))
-            app.state.db.commit()
-            activity.append(data)
-
-            # don't do anything for undefined app/window title & our own window
-            if not data['app'] or not data['window_title'] or data['app'].lower() == 'bossgpt':
-                continue
-
-            # len(messages) > 3 ensures the user has given some preference info,
-            # and we've sent the reply to it. len(messages) = 2 to start.
-            if time.time() - last_check_in > check_in_every and len(messages) > 3:
-                last_check_in = time.time()
-
-                # append most recent activity info to prompt
-                # TODO: better prompting. this is pretty stupid
-                messages.append({"role": "user", "content": f"I'm currently on app {data['app']} with title {data['window_title']}"})
-
-                resp = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    json={
-                        "model": "gpt-4",
-                        "messages": distill_history(messages),
-                        "max_tokens": 100,
-                        "stop": ["Great work!"],
-                        "temperature": temperature,
-                    }
-                )
-                resp_data = resp.json()
-                message = resp_data['choices'][0]['message']
-                if message['content'].strip() == "":
-                    message['content'] = "Great work!"
-                print('chatgpt:', message['content'])
-                should_reply = not (message['content'].startswith('Great work') and random.randint(0, int(encourage_every)) != 0)
-                notif_opts = ["badge"] if message['content'].startswith('Great work') else ["alert", "sound"]
-
-                if should_reply:
-                    await websocket.send_text(json.dumps({"type": "msg", "notif_opts": notif_opts, **message}))
-                    messages.append(message)
-
-        elif data['type'] == 'msg': # reply to the user
-            # save message  to db
-            c = app.state.db.cursor()
-            c.execute("INSERT INTO messages (user_id, content, role) VALUES (?, ?, ?)", (user_id, data['content'], data['role']))
-            app.state.db.commit()
-
-            messages.append({"role": "user", "content": data['content']})
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                json={
-                    "model": "gpt-4",
-                    "messages": distill_history(messages),
-                    "temperature": temperature,
-                    "functions": [
-                        {
-                            "name": "change_checkin",
-                            "description": "Change how often you check the user's activity.",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "new_interval": {
-                                        "type": "integer",
-                                        "description": f"The new time interval, in seconds, for checking activity. Current is {check_in_every}.",
-                                    },
-                                },
-                                "required": ["new_interval"],
-                            },
-                        }
-                    ],
-                    "max_tokens": 100,
-                }
-            )
-            resp_data = resp.json()
-            message = resp_data['choices'][0]['message']
-            if message.get("function_call"):
-                available_functions = {
-                    "change_checkin": change_checkin,
-                }  # only one function in this example, but you can have multiple
-                function_name = message["function_call"]["name"]
-                fuction_to_call = available_functions[function_name]
-                function_args = json.loads(message["function_call"]["arguments"])
-                message = fuction_to_call(function_args['new_interval'])
-
-            await websocket.send_text(json.dumps({"type": "msg", **message}))
-            messages.append(message)
-
 
 
 app.mount("/", StaticFiles(directory="static", html=True))
