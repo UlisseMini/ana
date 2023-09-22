@@ -371,7 +371,7 @@ class WebSocketHandler():
 
 
     async def on_trigger(self):
-        await self.send_and_record_msg({"role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
+        await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
 
 
 
