@@ -122,6 +122,8 @@ func wsURL() -> URL {
     return URL(string: ProcessInfo.processInfo.environment["WS_URL"]!)!
 }
 
+var initialized = false
+
 struct ChatView: View {
     @ObservedObject var chatHistory: ChatHistory
     @State private var currentMessage: String = ""
@@ -330,6 +332,9 @@ struct ChatView: View {
             }
         }
         .onAppear {
+            guard !initialized else { return }
+            initialized = true
+
             requestScreenRecordingPermission()
             self.setupWebSocket()
             self.setupWebSocketTimers()
@@ -396,7 +401,7 @@ class Settings: ObservableObject {
 struct bossgptApp: App {
     @StateObject var chatHistory = ChatHistory()
     @StateObject var settings = Settings() // <-- add this
-    
+
     var body: some Scene {
         WindowGroup {
             NavigationView {
