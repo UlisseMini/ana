@@ -20,6 +20,14 @@ HOST = os.environ["HOST"]
 
 app = FastAPI()
 
+# break time measures the epoch time at which the break will end. If it's in the future, then we are on break.
+break_time = 0
+def start_break(minutes):
+    global break_time
+    break_time = time.time() + minutes * 60
+    print('break started')
+    print(f'break lasts {minutes} minutes')
+
 
 
 def setup_db(conn):
@@ -173,16 +181,15 @@ client = httpx.AsyncClient(
 ON_TRIGGER_PROMPT = """
 You are a helpful assistant that helps the user manage their time.
 
-Over the last {minutes} minutes the user's activity has been:
-{activity}
-
 The user's common time sinks are:
 {timesinks}
 
 And the user's common endorsed activities are:
 {endorsed_activities}
 
-Collaboratively help the user find an alternative to the time sink they are currently on, but only if they want to.
+You will occasionally get an activity report message from the user if it's detected that they are on a timesink. When you get this message, you should help ensure that they endorse how they are spending their time. This usually means redirecting them to an endorsed activity, but it could also mean taking an intentional break.
+
+If the user is taking a break, check how long it will be, and then use the break function to pause check-ins for that long. When the next activity log shows, the break has ended.
 """.strip()
 
 # Respond to user normally (TODO)
@@ -198,11 +205,18 @@ The user's common time sinks are:
 
 Over the last {minutes} minutes the user's activity has been:
 {activity}
+
+
+If the user activity doesn't contain at least 30 seconds of time on a timesink, call the trigger function with "trigger": false.
 """.strip()
 
 
 # function to determine whether to trigger the app or not
 async def should_trigger(prompt: str) -> bool:
+    # check if break is in progress
+    if break_time > time.time():
+        print('break in progress')
+        return False
     print('trigger prompt:\n', prompt)
     messages = [{'role': 'user', 'content': prompt}]
     resp = await client.post(
@@ -214,7 +228,7 @@ async def should_trigger(prompt: str) -> bool:
                 {
                     # this should be either True or False, always called.
                     "name": "trigger",
-                    "description": "If true, trigger the app. If false, do nothing.",
+                    "description": "Pass true to trigger an intervention, or false to do nothing",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -235,9 +249,12 @@ async def should_trigger(prompt: str) -> bool:
     # trigger iff the message is a function call to trigger
     trigger = False
     if message.get("function_call") and message["function_call"]["name"] == 'trigger':
+        print(message["function_call"])
         # TypeError: string indices must be integers
         try:
             arguments = json.loads(message["function_call"]["arguments"])
+            print(arguments)
+            print(arguments["trigger"])
             trigger = arguments["trigger"]
         except json.JSONDecodeError:
             pass
@@ -367,11 +384,20 @@ class WebSocketHandler():
 
         trigger = await should_trigger(TRIGGER_PROMPT.format(minutes=last_n_seconds//60, timesinks=timesinks, activity=activity))
         if trigger:
-            await self.on_trigger()
+            # add the activity report message to the message history, and then call the normal response function
+            await self.send_and_record_msg({"type": "msg", "role": "user", "content": f"Activity report:\n{activity}"})
+            await self.respond_to_msg()
 
 
-    async def on_trigger(self):
-        await self.send_and_record_msg({"type": "msg", "role": "assistant", "content": "Hey! You're on a timesink. You should get back to work."})
+    # async def on_trigger(self, activity):
+    #     # get the ON_TRIGGER_PROMPT
+    #     settings = await self.get_settings()
+    #     timesinks = settings['timesinks']
+    #     endorsed_activities = settings['endorsed_activities']
+    #     sys_prompt = ON_TRIGGER_PROMPT.format(timesinks=timesinks, endorsed_activities=endorsed_activities)
+    #     # add the system message and the most recent 20 messages in the message history
+    #     messages = [{'role': 'system', 'content': sys_prompt}] + self.get_messages(limit=20)
+    #     # await self.send_and_record_msg()
 
 
 
@@ -396,23 +422,52 @@ class WebSocketHandler():
         return {"timesinks": settings[0], "endorsed_activities": settings[1]}
 
 
-    async def respond_to_msg(self, msg):
-        # use gpt4 to respond given the recent message history and context about their settings.
-        # TODO: use settings to give gpt4 additional context
+    async def respond_to_msg(self):
         settings = await self.get_settings()
-
-        # get recent messages
-        messages = self.get_messages(limit=30)
-        messages = [{'role': 'system', 'content': RESPOND_PROMPT}] + messages
+        timesinks = settings['timesinks']
+        endorsed_activities = settings['endorsed_activities']
+        sys_prompt = ON_TRIGGER_PROMPT.format(timesinks=timesinks, endorsed_activities=endorsed_activities)
+        # add the system message and the most recent 20 messages in the message history
+        messages = [{'role': 'system', 'content': sys_prompt}] + self.get_messages(limit=20)
+        functions = [
+            {
+                "name": "start_break",
+                "description": "Start a break for the given number of minutes",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "minutes": {
+                            "type": "integer",
+                            "description": "The number of minutes to take a break for",
+                        }
+                    },
+                    "required": ["minutes"],
+                },
+            }
+        ]
 
         resp = await client.post(
             "/v1/chat/completions",
-            json={"model": "gpt-3.5-turbo", "messages": messages}
+            json={"model": "gpt-4", "messages": messages, "functions": functions, "max_tokens": 1000}
         )
         resp.raise_for_status()
         resp_json = resp.json()
         message = resp_json['choices'][0]['message']
-        await self.send_and_record_msg({"type": "msg", **message})
+
+        if message.get("function_call"):
+            # Step 3: call the function
+            # Note: the JSON response may not always be valid; be sure to handle errors
+            available_functions = {
+                "start_break": start_break,
+            }  # only one function in this example, but you can have multiple
+            function_name = message["function_call"]["name"]
+            function_to_call = available_functions[function_name]
+            function_args = json.loads(message["function_call"]["arguments"])
+            function_to_call(
+                minutes=function_args.get("minutes"),
+            )
+        else:
+            await self.send_and_record_msg({"type": "msg", **message})
 
 
     async def run(self):
@@ -432,7 +487,9 @@ class WebSocketHandler():
             data = await self.receive(timeout=10)
             if not data:
                 if time.time() - last_check_in > check_in_interval:
+                    last_check_in = time.time()
                     await self.check_in(last_n_seconds=check_in_interval)
+                    print('check in')
 
                 continue
 
@@ -440,7 +497,7 @@ class WebSocketHandler():
                 self.record_activity(data)
             elif data['type'] == 'msg':
                 self.record_msg(data)
-                await self.respond_to_msg(data)
+                await self.respond_to_msg()
             elif data['type'] == 'settings':
                 await self.update_settings(data)
             else:
