@@ -345,10 +345,10 @@ struct ChatView: View {
         .navigationTitle("Chat")
     }
 
-    func addMessage(from user: String, message: String) {
+    func addMessage(from user: String, message: String, notifOpts: UNAuthorizationOptions? = nil) {
         chatHistory.addMsg(from: user, message: message)
-        if user != "user" {
-            showNotification(title: user, body: message)
+        if user != "user", let options = notifOpts {
+            showNotification(title: user, body: message, options: options)
         }
     }
 }
