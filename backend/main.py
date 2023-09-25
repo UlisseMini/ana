@@ -185,13 +185,23 @@ You are a helpful assistant that helps the user manage their time.
 The user's common time sinks are:
 {timesinks}
 
+---
+
 And the user's common endorsed activities are:
 {endorsed_activities}
 
-You will occasionally get an activity report message from the user if it's detected that they are on a timesink. When you get this message, you should help ensure that they endorse how they are spending their time. This usually means redirecting them to an endorsed activity, but it could also mean taking an intentional break.
+---
 
-If the user is taking a break, check how long it will be, and then use the break function to pause check-ins for that long. When the next activity log shows, the break has ended.
+When an activity report indicates the user might be distracted by a time sink, ask them questions about what they're doing and empathetically guide them towards using their time in a way they endorse, or taking a break. Write messages in a short (~25 words) encouraging and empathetic texting style. If taking a break, pause check-ins using the break function for the duration of the break. When the next activity log shows, the break has ended.
+
+If the user is not on a time sink, respond with an empty message to avoid interrupting the user.
+
+Example:
+Assistant: Why are you on YouTube right now? Is there anything you'd rather be doing?
+User: I'm tired because I didn't sleep well.
+Assistant: I'm sorry to hear that. Would you like to take a break?
 """.strip()
+
 
 # call the trigger function with "trigger": true or "trigger": false
 TRIGGER_PROMPT = """
@@ -491,7 +501,7 @@ class WebSocketHandler():
             function_to_call(
                 minutes=function_args.get("minutes"),
             )
-        else:
+        elif message["content"].strip() != "":
             await self.send_and_record_msg({"type": "msg", **message})
 
 
@@ -519,6 +529,7 @@ class WebSocketHandler():
                 continue
 
             if data['type'] == 'activity_info':
+                print('activity', data)
                 self.record_activity(data)
             elif data['type'] == 'msg':
                 self.record_msg(data)
