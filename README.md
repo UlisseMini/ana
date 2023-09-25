@@ -1,6 +1,7 @@
 # BossGPT
 
-_The AI that helps you achieve your goals_ [Discord](https://discord.gg/JQnNyAZeFk)
+_The AI that helps you achieve your goals._
+[Discord](https://discord.gg/JQnNyAZeFk)
 
 Motivation: I sometimes get distracted during work I have to get done. I've tried blocking stuff, but it's always easy to disable or not flexible enough for my exceptions, like allowing YouTube but only for educational content.
 
