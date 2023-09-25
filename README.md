@@ -8,7 +8,15 @@ Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features
 
 ## Installation instructions
 
-Download a release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page.
+Download the `.app.zip` release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page, unzip it, right click and press "Open"
+
+Then configure settings. Here are my settings
+
+![](images/settings.png)
+
+After you configure that the AI will check if you've been spending time on a time-sink every 10 minutes. There's no flashy indicator that everything worked right now, but trust me, it works.
+
+(Okay it might not work, in which case you can open an issue or bug us on [discord](https://discord.gg/JQnNyAZeFk).)
 
 ## Motivation
 
