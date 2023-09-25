@@ -154,7 +154,13 @@ struct ChatView: View {
         switch message.type {
             case .msg:
                 let message = try JSONDecoder().decode(MsgMessage.self, from: data)
-                addMessage(from: message.role, message: message.content)
+
+                if let options = message.notifOpts {
+                    let notifOpts: UNAuthorizationOptions = options.reduce([]) { $0.union($1.toUNAuthorizationOptions) }
+                    addMessage(from: message.role, message: message.content, notifOpts: notifOpts)
+                } else {
+                    addMessage(from: message.role, message: message.content)
+                }
             case .activityInfo:
                 // print error; server shouldn't send us activity info
                 print("ERROR: Received activity info from server")

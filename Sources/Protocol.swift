@@ -1,8 +1,22 @@
 // TODO: Better types. this is essentially c code, yuck
 import Foundation
+import UserNotifications
 
 enum NotificationOptions: String, Codable {
     case badge, alert, sound
+}
+
+extension NotificationOptions {
+    var toUNAuthorizationOptions: UNAuthorizationOptions {
+        switch self {
+        case .badge:
+            return .badge
+        case .alert:
+            return .alert
+        case .sound:
+            return .sound
+        }
+    }
 }
 
 enum MessageType: String, Codable {
