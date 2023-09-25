@@ -1,9 +1,18 @@
 # BossGPT
 
 _The AI that helps you achieve your goals._
-[Discord](https://discord.gg/JQnNyAZeFk)
 
-Motivation: I sometimes get distracted during work I have to get done. I've tried blocking stuff, but it's always easy to disable or not flexible enough for my exceptions, like allowing YouTube but only for educational content.
+![](images/example1.png)
+
+Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features!
+
+## Installation instructions
+
+Download a release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page.
+
+## Motivation
+
+I sometimes get distracted during work I have to get done. I've tried blocking stuff, but it's always easy to disable or not flexible enough for my exceptions, like allowing YouTube but only for educational content.
 
 So I'm building an AI to watch over my shoulder and help me work. My dream setup is something like this:
 
