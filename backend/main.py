@@ -199,11 +199,10 @@ If the user is on a timesink, then trigger the app. Otherwise, pass false to do 
 The user's common time sinks are:
 {timesinks}
 
-Over the last {minutes} minutes the user's activity has been:
+The user's recent activity has been:
 {activity}
 
-
-If the user activity doesn't contain at least 30 seconds of time on a timesink, call the trigger function with "trigger": false.
+If the user has been on a time sink for over a minute trigger the app, otherwise pass false to do nothing.
 """.strip()
 
 
@@ -237,6 +236,7 @@ async def should_trigger(prompt: str) -> bool:
                 }
             ],
             "max_tokens": 100,
+            "temperature": 0,
         }
     )
     resp.raise_for_status()
@@ -338,7 +338,8 @@ class WebSocketHandler():
 
 
     @staticmethod
-    def add_activity_dur(activities):
+    def add_activity_dur(activities, now=None):
+        now = now or time.time()
         # prevent IndexErrors
         if len(activities) == 0:
             return activities
@@ -346,7 +347,7 @@ class WebSocketHandler():
         for i in range(len(activities) - 1):
             activities[i]['dur'] = activities[i]['time'] - activities[i+1]['time']
         # add time spent on last app by subtracting the time of the last app from now
-        activities[-1]['dur'] = time.time() - activities[-1]['time']
+        activities[-1]['dur'] = now - activities[-1]['time']
         return activities
 
     @staticmethod
@@ -364,7 +365,7 @@ class WebSocketHandler():
 
                 dist = distance(a1['window_title'], a2['window_title'])
                 if dist < k:
-                    print(f'merge {a2} into {a1} dist {dist}')
+                    # print(f'merge {a2} into {a1} dist {dist}')
                     a1['dur'] += a2['dur'] # merge a2 into a1
                     activities[j] = None   # mark a2 to be deleted
 
@@ -372,36 +373,51 @@ class WebSocketHandler():
         return [a for a in activities if a is not None]
 
 
-    async def check_in(self, max_n=20, last_n_seconds=600):
-        print('checking in...')
+    @staticmethod
+    def get_activities_for_report(db, user_id: int, last_n_seconds: int, max_n: int, now=None):
         # get the activites from user in the last 10 minutes (n secnods)
-        now = time.time()
-        c = self.db.cursor()
+        now = now if now is not None else time.time()
+        c = db.cursor()
         rows = c.execute(
-            f"SELECT app, window_title, time FROM activity WHERE user_id = ? AND time > ? ORDER BY time DESC LIMIT ?",
-            (self.user_id, now - last_n_seconds, max_n)
+            f"SELECT app, window_title, time FROM activity WHERE user_id = ? AND time > ? AND time < ? ORDER BY time DESC LIMIT ?",
+            (user_id, now - last_n_seconds, now, max_n)
         ).fetchall()
         if len(rows) == 0:
             # just put most recent activity
-            rows = c.execute(f"SELECT app, window_title, time FROM activity WHERE user_id = ? ORDER BY time DESC LIMIT 1", (self.user_id,)).fetchall()
+            rows = c.execute(f"SELECT app, window_title, time FROM activity WHERE user_id = ? AND time < ? ORDER BY time DESC LIMIT 1", (user_id, now)).fetchall()
         activities = [{"app": app, "window_title": window_title, "time": time} for app, window_title, time in rows]
-        self.add_activity_dur(activities)
+        WebSocketHandler.add_activity_dur(activities, now=now)
+
         # merge activities with similar titles
-        activities = self.merge_activities(activities)
+        activities = WebSocketHandler.merge_activities(activities)
+
+        # remove very short activities  (less than 10 seconds)
+        activities = [a for a in activities if a['dur'] > 10]
 
         # make most recent activity last
         activities.reverse()
+        return activities
 
+
+    @staticmethod
+    def get_activity_report(activities) -> str:
+        activity = '\n'.join(f"{a['dur']//60:.0f}m {a['dur']%60:.0f}s on {a['app']} - {a['window_title']}" for a in activities)
+        return activity
+
+
+
+
+    async def check_in(self, max_n=100, last_n_seconds=600):
+        print('checking in...')
+        assert self.user_id, f'no user id for {self}'
 
         timesinks: str = (await self.get_settings()).get('timesinks') or ''
         if timesinks.strip() == '':
-            print('No time sinks yet -- skipping check in')
+            print('No time sinks configured -- skipping check in')
             return
 
-        activity = '\n'.join(f"{a['dur']//60:.0f}m {a['dur']%60:.0f}s on {a['app']} - {a['window_title']}" for a in activities)
-        if timesinks.strip() == '':
-            print('no timesinks recorded yet')
-            return
+        activities = self.get_activities_for_report(self.db, self.user_id, last_n_seconds=last_n_seconds, max_n=max_n)
+        activity = self.get_activity_report(activities)
 
         trigger = await should_trigger(TRIGGER_PROMPT.format(minutes=last_n_seconds//60, timesinks=timesinks, activity=activity))
         if trigger:
@@ -510,7 +526,8 @@ class WebSocketHandler():
             elif data['type'] == 'settings':
                 await self.update_settings(data)
             elif data['type'] == 'debug':
-                if data.get('cmd') == 'checkin':
+                cmd = data.get('cmd')
+                if cmd == 'checkin':
                     await self.check_in()
             else:
                 raise ValueError(f"Unknown message type: {data['type']}")
