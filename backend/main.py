@@ -8,6 +8,7 @@ import json
 import httpx
 import time
 import asyncio
+from Levenshtein import distance
 
 # run source ../.env to get path variables
 from dotenv import load_dotenv
@@ -348,6 +349,28 @@ class WebSocketHandler():
         activities[-1]['dur'] = time.time() - activities[-1]['time']
         return activities
 
+    @staticmethod
+    def merge_activities(activities, k=5):
+        """
+        merge activities with similar titles, that is, distance(s1, s2) < k
+        keep the description of the first activity in the list.
+        passing a list in reverse chronological order is recommended,
+        as then the most recent description will be kept.
+        """
+        for i in range(len(activities)):
+            for j in range(i+1, len(activities)):
+                a1, a2 = activities[i], activities[j]
+                if a1 is None or a2 is None: continue
+
+                dist = distance(a1['window_title'], a2['window_title'])
+                if dist < k:
+                    print(f'merge {a2} into {a1} dist {dist}')
+                    a1['dur'] += a2['dur'] # merge a2 into a1
+                    activities[j] = None   # mark a2 to be deleted
+
+        # delete the marked activities
+        return [a for a in activities if a is not None]
+
 
     async def check_in(self, max_n=20, last_n_seconds=600):
         print('checking in...')
@@ -362,17 +385,20 @@ class WebSocketHandler():
             # just put most recent activity
             rows = c.execute(f"SELECT app, window_title, time FROM activity WHERE user_id = ? ORDER BY time DESC LIMIT 1", (self.user_id,)).fetchall()
         activities = [{"app": app, "window_title": window_title, "time": time} for app, window_title, time in rows]
-
         self.add_activity_dur(activities)
-        # filter things with < 10s of activity
-        # activities = [a for a in activities if a['dur'] > 10]
+        # merge activities with similar titles
+        activities = self.merge_activities(activities)
+
+        # make most recent activity last
+        activities.reverse()
+
 
         timesinks: str = (await self.get_settings()).get('timesinks') or ''
         if timesinks.strip() == '':
             print('No time sinks yet -- skipping check in')
             return
 
-        activity = '\n'.join(f"{a['dur']:.0f} seconds on {a['app']} - {a['window_title']}" for a in activities)
+        activity = '\n'.join(f"{a['dur']//60:.0f}m {a['dur']%60:.0f}s on {a['app']} - {a['window_title']}" for a in activities)
         if timesinks.strip() == '':
             print('no timesinks recorded yet')
             return
