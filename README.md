@@ -26,7 +26,7 @@ It isn't there yet. The current version just notifies you when you're on a time 
 
 ## Ideas
 
-Some future directions I might go in. If you're interested in the project
+Some future directions I might go in. If you're interested in the project please let me know which is most exciting to you.
 
 ### Talk to past self
 
@@ -35,3 +35,10 @@ Basically, "talk to your past self" depending on the context. Do [this](https://
 Have N contexts, each has a name, data for detection (examples and/or instructions), and a prompt for handling that situation. When a context is activated an empty chat window opens with an indicator for the context, and the LLM talks to you based on the prompt.
 
 Basically customer service where you're the company, user, and product.
+
+### Advanced automatic time tracker
+
+From window titles plus all the text on screen and AI you could build a great automatic time tracker. Some differentiating features:
+
+- When you're away from the computer the AI asks what you did to fill in missing time
+- The AI can help you reflect about how you spent your time
