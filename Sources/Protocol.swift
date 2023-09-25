@@ -6,7 +6,7 @@ enum NotificationOptions: String, Codable {
 }
 
 enum MessageType: String, Codable {
-    case register, activityInfo = "activity_info", msg, settings
+    case register, activityInfo = "activity_info", msg, settings, debug
 }
 
 struct BaseMessage: Codable {
@@ -20,6 +20,11 @@ struct User: Codable {
 struct RegisterMessage: Codable {
     let type: MessageType
     let user: User
+}
+
+struct DebugMessage: Codable {
+    let type: MessageType
+    let cmd: String
 }
 
 struct ActivityInfoMessage: Codable {

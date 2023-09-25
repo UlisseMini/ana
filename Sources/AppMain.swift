@@ -3,6 +3,7 @@ import Foundation
 import UserNotifications
 import Starscream
 import IOKit
+import HotKey
 
 
 
@@ -134,12 +135,14 @@ struct ChatView: View {
     @ObservedObject var settings: Settings
 
     private let encoder = JSONEncoder()
+    private var hotKey: HotKey
 
-    init(chatHistory ch: ChatHistory, settings: Settings) {
+    init(chatHistory ch: ChatHistory, settings: Settings, hotKey: HotKey) {
         ws = WebSocket(request: URLRequest(url: wsURL()))
         chatHistory = ch
         encoder.keyEncodingStrategy = .convertToSnakeCase
         self.settings = settings
+        self.hotKey = hotKey
     }
 
     var messages: [ChatMessage] {
@@ -180,6 +183,15 @@ struct ChatView: View {
 
 
     private func setupWebSocket() {
+        self.hotKey.keyDownHandler = {
+            print("Hotkey pressed, sending: \(self.isConnected)")
+            // send {"type": "debug", "cmd": "checkin"} if connected
+            if self.isConnected {
+                let debugMessage = DebugMessage(type: .debug, cmd: "checkin")
+                self.sendMessage(debugMessage)
+            }
+        }
+
         self.ws.onEvent = { event in
             switch event {
             case .connected(let headers):
@@ -338,6 +350,7 @@ struct ChatView: View {
             requestScreenRecordingPermission()
             self.setupWebSocket()
             self.setupWebSocketTimers()
+
             DispatchQueue.main.async {
                 isTextFieldFocused = true
             }
@@ -402,18 +415,20 @@ struct bossgptApp: App {
     @StateObject var chatHistory = ChatHistory()
     @StateObject var settings = Settings() // <-- add this
 
+    let hotKey = HotKey(key: .c, modifiers: [.command, .option])
+
     var body: some Scene {
         WindowGroup {
             NavigationView {
                 List {
-                    NavigationLink(destination: ChatView(chatHistory: chatHistory, settings: settings)) {
+                    NavigationLink(destination: ChatView(chatHistory: chatHistory, settings: settings, hotKey: hotKey)) {
                         Label("Chat", systemImage: "message")
                     }
                     NavigationLink(destination: SettingsView(settings: settings)) { // <-- add this
                         Label("Settings", systemImage: "gearshape")
                     }
                 }
-                ChatView(chatHistory: chatHistory, settings: settings) // <-- add this
+                ChatView(chatHistory: chatHistory, settings: settings, hotKey: hotKey) // <-- add this
             }
             .environmentObject(settings) // <-- add this
         }

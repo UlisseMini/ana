@@ -7,8 +7,8 @@ let package = Package(
     name: "bossgpt-swift",
     platforms: [.macOS(.v12)],
     dependencies: [
-        .package(url: "https://github.com/MacPaw/OpenAI.git", branch: "main"),
-        .package(url: "https://github.com/daltoniam/Starscream.git", .upToNextMajor(from: "4.0.6"))
+        .package(url: "https://github.com/daltoniam/Starscream.git", .upToNextMajor(from: "4.0.6")),
+        .package(url: "https://github.com/soffes/HotKey", from: "0.2.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -16,8 +16,8 @@ let package = Package(
         .executableTarget(
             name: "bossgpt-swift",
             dependencies: [
-                "OpenAI",
-                "Starscream"
+                "Starscream",
+                "HotKey"
             ],
             path: "Sources"),
     ]

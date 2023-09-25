@@ -192,11 +192,6 @@ You will occasionally get an activity report message from the user if it's detec
 If the user is taking a break, check how long it will be, and then use the break function to pause check-ins for that long. When the next activity log shows, the break has ended.
 """.strip()
 
-# Respond to user normally (TODO)
-RESPOND_PROMPT = """
-You are a helpful assistant.
-""".strip()
-
 # call the trigger function with "trigger": true or "trigger": false
 TRIGGER_PROMPT = """
 If the user is on a timesink, then trigger the app. Otherwise, pass false to do nothing.
@@ -389,18 +384,6 @@ class WebSocketHandler():
             await self.respond_to_msg()
 
 
-    # async def on_trigger(self, activity):
-    #     # get the ON_TRIGGER_PROMPT
-    #     settings = await self.get_settings()
-    #     timesinks = settings['timesinks']
-    #     endorsed_activities = settings['endorsed_activities']
-    #     sys_prompt = ON_TRIGGER_PROMPT.format(timesinks=timesinks, endorsed_activities=endorsed_activities)
-    #     # add the system message and the most recent 20 messages in the message history
-    #     messages = [{'role': 'system', 'content': sys_prompt}] + self.get_messages(limit=20)
-    #     # await self.send_and_record_msg()
-
-
-
     async def update_settings(self, settings_msg):
         print('updating settings', settings_msg)
         # insert timesinks data into database. we don't delete anything.
@@ -500,6 +483,9 @@ class WebSocketHandler():
                 await self.respond_to_msg()
             elif data['type'] == 'settings':
                 await self.update_settings(data)
+            elif data['type'] == 'debug':
+                if data.get('cmd') == 'checkin':
+                    await self.check_in()
             else:
                 raise ValueError(f"Unknown message type: {data['type']}")
 
