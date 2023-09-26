@@ -4,6 +4,7 @@ BossGPT.app
 todo*
 .env
 dist
+random
 
 # backend shit
 db.sqlite3
