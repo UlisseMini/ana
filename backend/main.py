@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import sqlite3
 import stripe
+import subprocess
 import os
 import json
 import httpx
@@ -215,6 +216,14 @@ The user's recent activity has been:
 If the user has been on a time sink for over a minute trigger the app, otherwise pass false to do nothing.
 """.strip()
 
+# Get version from most recent git tag
+VERSION = subprocess.check_output(["git", "describe", "--tags"]).strip().decode("utf-8")
+RELEASE_MSG = subprocess.check_output(["git", "log", "-1", "--pretty=%B", VERSION]).strip().decode("utf-8")
+
+INITIAL_MESSAGE = f"""
+Welcome to BossGPT {VERSION}! Latest change: {RELEASE_MSG}
+""".strip()
+
 
 # function to determine whether to trigger the app or not
 async def should_trigger(prompt: str) -> bool:
@@ -337,6 +346,8 @@ class WebSocketHandler():
             await self.send_msg({"type": "msg", **msg})
 
         print(f"done registering {data} user id {self.user_id}")
+
+        await self.send_msg({"type": "msg", "role": "special", "content": INITIAL_MESSAGE})
 
 
     async def receive(self, timeout=10):
