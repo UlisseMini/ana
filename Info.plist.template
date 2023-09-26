@@ -46,6 +46,8 @@
 		<string>We need access to screen recording to identify active windows for productivity tracking.</string>
 		<key>LSEnvironment</key>
 		<dict>
+			<key>VERSION</key>
+			<string>VERSION_REPLACE_ME</string>
 			<key>WS_URL</key>
 			<string>WS_URL_REPLACE_ME</string>
 		</dict>

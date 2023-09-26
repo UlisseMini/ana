@@ -34,6 +34,7 @@ struct User: Codable {
 struct RegisterMessage: Codable {
     let type: MessageType
     let user: User
+    let version: String
 }
 
 struct DebugMessage: Codable {

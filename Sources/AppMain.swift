@@ -211,7 +211,8 @@ struct ChatView: View {
                 // send registration message
                 let registerMessage = RegisterMessage(
                     type: .register,
-                    user: User(machine_id: getUniqueMachineID()!)
+                    user: User(machine_id: getUniqueMachineID()!),
+                    version: ProcessInfo.processInfo.environment["VERSION"] ?? "unknown"
                 )
                 self.sendMessage(registerMessage)
             case .disconnected(_, _):

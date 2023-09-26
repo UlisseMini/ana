@@ -39,6 +39,7 @@ def setup_db(conn):
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 machine_id TEXT UNIQUE, -- globally unique machine id
+                version TEXT, -- version of the frontend app
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -221,7 +222,7 @@ VERSION = subprocess.check_output(["git", "describe", "--tags"]).strip().decode(
 RELEASE_MSG = subprocess.check_output(["git", "log", "-1", "--pretty=%B", VERSION]).strip().decode("utf-8")
 
 INITIAL_MESSAGE = f"""
-Welcome to BossGPT {VERSION}! Latest change: {RELEASE_MSG}
+Welcome to BossGPT! Server {VERSION}, App {{APP_VERSION}}. Latest server update: {RELEASE_MSG}
 """.strip()
 
 
@@ -289,6 +290,7 @@ class WebSocketHandler():
         self.ws = ws
         self.db = db
         self.user_id = None
+        self.version = None
 
 
     # TODO: Consistent names for db functions
@@ -331,6 +333,10 @@ class WebSocketHandler():
         self.user_id, = c.execute("SELECT id FROM users WHERE machine_id = ?", (user['machine_id'],)).fetchone()
         assert self.user_id is not None
 
+        # update version
+        c.execute("UPDATE users SET version = ? WHERE id = ?", (data.get('version'), self.user_id))
+        self.version = data.get('version')
+
         # add empty settings row if it doesn't exist
         settings = None
         try:
@@ -347,7 +353,7 @@ class WebSocketHandler():
 
         print(f"done registering {data} user id {self.user_id}")
 
-        await self.send_msg({"type": "msg", "role": "special", "content": INITIAL_MESSAGE})
+        await self.send_msg({"type": "msg", "role": "special", "content": INITIAL_MESSAGE.format(APP_VERSION=self.version)})
 
 
     async def receive(self, timeout=10):

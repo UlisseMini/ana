@@ -1,4 +1,6 @@
 ARCH ?= $(shell uname -m)
+# get version from latest git tag
+VERSION=$(shell git describe --tags)
 
 all: buildapps
 
@@ -9,9 +11,11 @@ buildapps:
 	$(MAKE) buildapp ARCH=arm64 WS_URL=$(WS_URL)
 	rm -rf dist/BossGPT-arm64.app && mv BossGPT.app dist/BossGPT-arm64.app
 
+	@printf "\nSuccessfully built $(VERSION) into dist\n"
+
 
 # build app to BossGPT.app
-buildapp: release Info.plist
+buildapp: release plist
 	mkdir -p BossGPT.app/Contents/MacOS BossGPT.app/Contents/Resources
 	cp BossGPT BossGPT.app/Contents/MacOS/BossGPT
 	cp Info.plist BossGPT.app/Contents/Info.plist
@@ -31,13 +35,16 @@ build:
 	cp .build/$(ARCH)-apple-macosx/$(TARGET)/bossgpt BossGPT
 
 
-Info.plist:
+plist:
 	if [ -z "$(WS_URL)" ]; then echo "WS_URL is unset"; exit 1; fi
-	sed -e "s|WS_URL_REPLACE_ME|$(WS_URL)|" Info.plist.template > Info.plist
+	sed \
+		-e "s|WS_URL_REPLACE_ME|$(WS_URL)|" \
+		-e "s|VERSION_REPLACE_ME|$(VERSION)|" \
+		Info.plist.template > Info.plist
 
 
 dev:
-	find Sources Package.swift | entr -rc sh -c "make debug -s && codesign -s 'Apple Development' BossGPT && ./BossGPT"
+	find Sources Package.swift | entr -rc sh -c "make debug -s && codesign -s 'Apple Development' BossGPT && VERSION=$(VERSION) ./BossGPT"
 
 
 clean:
