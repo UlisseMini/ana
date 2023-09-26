@@ -97,16 +97,22 @@ class WebSocketHandler():
                 continue # later we'll do stuff here
 
             if msg['type'] == 'state':
+                print('got state from client')
                 self.app_state = AppState(**msg['state'])
-                await self.save_state()
 
+                # FIXME: Weird bug where new msg isn't included. probably a race condition.
+                # I need to track dates inside the app state & db.
+
+                # treat the first state message as registration
                 if self.user_id is None:
-                    self.user_id = await self.get_user_id(self.app_state)
-                    db_app_state = await self.get_app_state(self.user_id)
+                    self.user_id = self.get_user_id(self.app_state)
+                    db_app_state = self.get_app_state(self.user_id)
                     if db_app_state:
                         self.app_state = db_app_state
                         await self.send_state()
-
+                else:
+                    # not registration, save state to db
+                    self.save_state()
 
                 if self.app_state.messages and self.app_state.messages[-1].role != 'assistant':
                     print(f'responding to {self.app_state.messages[-1].content}')
@@ -117,19 +123,39 @@ class WebSocketHandler():
         sys_prompt = "You are a helpful assistant who responds with concise and helpful ~20 word texts. You ask questions before proposing things, both to make sure you understand and make the user feel understood."
         messages = [{'role': 'system', 'content': sys_prompt}]
         messages += [m.model_dump() for m in self.app_state.messages]
-        resp = await client.post(
-            "/v1/chat/completions",
-            json={"model": "gpt-3.5-turbo", "messages": messages, "max_tokens": 200}
-        )
-        resp.raise_for_status()
-        resp_json = resp.json()
-        message = resp_json['choices'][0]['message']
 
+        message = Message(role='assistant', content='')
         self.app_state.messages.append(message)
-        await self.send_state()
+        async with client.stream(
+            method='POST',
+            url="/v1/chat/completions",
+            json={
+                "model": "gpt-3.5-turbo",
+                "messages": messages,
+                "max_tokens": 200,
+                "stream": True
+            },
+        ) as resp:
+            resp.raise_for_status()
+            # chunks are "data: {json}\n\n"
+            async for chunk in resp.aiter_lines():
+                if not chunk.startswith("data: "):
+                    continue
+                data_str = chunk.split("data: ")[1].strip()
+                resp_json = json.loads(data_str)
+                choice = resp_json['choices'][0]
+
+                if choice['finish_reason'] or choice.get('delta') is None:
+                    break
+
+                message.content += resp_json['choices'][0]['delta']['content']
+                await self.send_state()
+
+            self.save_state()
 
 
-    async def get_app_state(self, user_id: int) -> Optional[AppState]:
+    # TODO: Move to aiosqlite3
+    def get_app_state(self, user_id: int) -> Optional[AppState]:
         "Get most recent app state from the database"
         with self.db:
             c = self.db.cursor()
@@ -143,7 +169,7 @@ class WebSocketHandler():
                 return AppState(**json.loads(rows[0]))
 
 
-    async def get_user_id(self, s: AppState) -> int:
+    def get_user_id(self, s: AppState) -> int:
         "get user_id from machine_id from the database"
         with self.db:
             c = self.db.cursor()
@@ -159,18 +185,20 @@ class WebSocketHandler():
 
 
     async def send_state(self):
-        print(f"sending state {self.app_state}")
+        print('sending state to client')
         await self.ws.send_json({"type": "state", "state": self.app_state.model_dump()})
 
 
-    async def save_state(self):
+    def save_state(self):
         "Save state to the database"
+        print('saving state to db')
         with self.db:
             c = self.db.cursor()
             c.execute("""
                 INSERT INTO app_states (user_id, state_json)
                 VALUES (?, ?)
             """, (self.user_id, json.dumps(self.app_state.model_dump())))
+            self.db.commit()
 
 
     async def receive(self, timeout):

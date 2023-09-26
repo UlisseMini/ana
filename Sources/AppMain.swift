@@ -22,8 +22,6 @@ struct WebSocketMessage: Codable {
 }
 
 
-
-
 // SwiftUI Views
 
 struct ChatView: View {
@@ -69,6 +67,7 @@ struct ChatView: View {
                     print("Unknown message type: \(msg.type)")
                 }
             }
+            conn.onConnectCallback = { self.saveState(appState: appState) }
         }
         .onDisappear {
             self.saveState(appState: appState)
@@ -107,6 +106,7 @@ class ConnectionManager {
     private let decoder = JSONDecoder()
 
     public var onMessageCallback: (WebSocketMessage) -> Void = { _ in }
+    public var onConnectCallback: () -> Void = { }
 
     init() {
         // should have compromised and used snake_case in the model, but I didn't,
@@ -168,6 +168,9 @@ class ConnectionManager {
             self.write(string: message)
         }
         bufferedMessages.removeAll()
+
+        // Call onConnectCallback
+        onConnectCallback()
     }
 
     func didReceive(event: WebSocketEvent, client: WebSocket) {
