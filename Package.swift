@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "bossgpt-swift",
+    name: "bossgpt",
     platforms: [.macOS(.v12)],
     dependencies: [
         .package(url: "https://github.com/daltoniam/Starscream.git", .upToNextMajor(from: "4.0.6")),
@@ -14,7 +14,7 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
-            name: "bossgpt-swift",
+            name: "bossgpt",
             dependencies: [
                 "Starscream",
                 "HotKey"

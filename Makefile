@@ -1,4 +1,14 @@
-all: buildapp
+ARCH ?= $(shell uname -m)
+
+all: buildapps
+
+buildapps:
+	mkdir -p dist
+	$(MAKE) buildapp ARCH=x86_64 WS_URL=$(WS_URL)
+	rm -rf dist/BossGPT-x86_64.app && mv BossGPT.app dist/BossGPT-x86_64.app
+	$(MAKE) buildapp ARCH=arm64 WS_URL=$(WS_URL)
+	rm -rf dist/BossGPT-arm64.app && mv BossGPT.app dist/BossGPT-arm64.app
+
 
 # build app to BossGPT.app
 buildapp: release Info.plist
@@ -11,14 +21,14 @@ buildapp: release Info.plist
 
 
 release:
-	$(MAKE) build TARGET=release
+	$(MAKE) build TARGET=release ARCH=$(ARCH)
 
 debug:
-	$(MAKE) build TARGET=debug
+	$(MAKE) build TARGET=debug ARCH=$(ARCH)
 
 build:
-	swift build -c $(TARGET)
-	cp .build/arm64-apple-macosx/$(TARGET)/bossgpt-swift BossGPT
+	arch -$(ARCH) sh -c 'swift build -c $(TARGET)'
+	cp .build/$(ARCH)-apple-macosx/$(TARGET)/bossgpt BossGPT
 
 
 Info.plist:

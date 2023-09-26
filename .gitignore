@@ -3,6 +3,7 @@ BossGPT
 BossGPT.app
 todo*
 .env
+dist
 
 # backend shit
 db.sqlite3
