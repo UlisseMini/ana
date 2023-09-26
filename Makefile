@@ -11,6 +11,9 @@ buildapps:
 	$(MAKE) buildapp ARCH=arm64 WS_URL=$(WS_URL)
 	rm -rf dist/BossGPT-arm64.app && mv BossGPT.app dist/BossGPT-arm64.app
 
+	zip -r dist/BossGPT-x86_64.app.zip dist/BossGPT-x86_64.app
+	zip -r dist/BossGPT-arm64.app.zip dist/BossGPT-arm64.app
+
 	@printf "\nSuccessfully built $(VERSION) into dist\n"
 
 
