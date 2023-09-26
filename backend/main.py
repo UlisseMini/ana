@@ -218,6 +218,8 @@ If the user has been on a time sink for over a minute trigger the app, otherwise
 """.strip()
 
 # Get version from most recent git tag
+GIT_DIR = '.git' if os.path.isdir('.git') else '../.git' if os.path.isdir('../.git') else None
+if not GIT_DIR: raise Exception('No .git directory found')
 VERSION = subprocess.check_output(["git", "describe", "--tags"]).strip().decode("utf-8")
 RELEASE_MSG = subprocess.check_output(["git", "log", "-1", "--pretty=%B", VERSION]).strip().decode("utf-8")
 
