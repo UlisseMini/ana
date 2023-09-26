@@ -355,9 +355,9 @@ class WebSocketHandler():
             return activities
         # add time spent on each app by subtracting the time of the next app from the time of the current app
         for i in range(len(activities) - 1):
-            activities[i]['dur'] = activities[i]['time'] - activities[i+1]['time']
+            activities[i]['dur'] = round(activities[i]['time'] - activities[i+1]['time'])
         # add time spent on last app by subtracting the time of the last app from now
-        activities[-1]['dur'] = now - activities[-1]['time']
+        activities[-1]['dur'] = round(now - activities[-1]['time'])
         return activities
 
     @staticmethod
