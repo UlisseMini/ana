@@ -502,7 +502,7 @@ class WebSocketHandler():
                 minutes=function_args.get("minutes"),
             )
         elif message["content"].strip() != "":
-            await self.send_and_record_msg({"type": "msg", **message})
+            await self.send_and_record_msg({"type": "msg", **message, 'notifOpts': ['sound', 'alert']})
 
 
     async def run(self):
