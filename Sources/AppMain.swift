@@ -300,6 +300,7 @@ struct ChatView: View {
                         ForEach(messages) { chatMessage in
                             HStack {
                                 if chatMessage.user == "user" {
+                                    // blue
                                     Spacer()
                                     Text(chatMessage.message)
                                     .padding(.vertical, 5)
@@ -307,7 +308,17 @@ struct ChatView: View {
                                     .background(Color.blue)
                                     .foregroundColor(.white)
                                     .cornerRadius(10)
+                                } else if chatMessage.user == "special" {
+                                    // green
+                                    Spacer()
+                                    Text(chatMessage.message)
+                                    .padding(.vertical, 5)
+                                    .padding(.horizontal, 10)
+                                    .background(Color.green)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
                                 } else {
+                                    // gray
                                     Text(chatMessage.message)
                                     .padding(.vertical, 5)
                                     .padding(.horizontal, 10)
