@@ -3,30 +3,32 @@ import Starscream
 
 
 // Model Definitions
-struct AppState: Codable {
+struct AppState: Codable, Equatable {
     var machineId: String
     var username: String
+
     var messages: [Message]
     var settings: Settings
 }
 
-struct Message: Codable {
+struct Message: Codable, Equatable {
     let content: String
     let role: String // user, assistant, or system
 }
 
-struct PromptPair: Codable {
+struct PromptPair: Codable, Equatable {
     var trigger: String
     var response: String
 }
 
-struct Settings: Codable {
+struct Settings: Codable, Equatable {
     var prompts: [PromptPair]
+    var checkInInterval: Int
 }
 
 
 // WebSocket Definitions
-struct WebSocketMessage: Codable {
+struct WebSocketMessage: Codable, Equatable {
     let type: String
     let state: AppState
 }
@@ -36,17 +38,13 @@ struct WebSocketMessage: Codable {
 
 struct ChatView: View {
     @Binding var appState: AppState
-    @State var newMessage: String = ""
-    var conn: ConnectionManager
-
-    func saveState(appState: AppState) {
-        conn.send(WebSocketMessage(type: "state", state: appState))
-    }
+    @State var newMessage: String = "" // TODO: Move into AppState for telemetry
+    var sync: StateSyncManager
 
     func send() {
         guard !newMessage.isEmpty else { return }
         appState.messages.append(Message(content: newMessage, role: "user"))
-        self.saveState(appState: appState)
+        sync.syncState(appState)
         DispatchQueue.main.async { newMessage = "" }
     }
 
@@ -66,27 +64,12 @@ struct ChatView: View {
             .padding()
         }
         .onAppear {
+            // TODO: Use this somewhere
             for window in getVisibleWindows() {
                 if let name = window["kCGWindowName"] {
                     print("TITLE: \(name) OWNER: \(window["kCGWindowOwnerName"]!)")
                 }
             }
-
-            self.saveState(appState: appState)
-            conn.onMessageCallback = { msg in
-                switch msg.type {
-                case "state":
-                    print("Received state: \(msg.state)")
-                    // TODO: Check creation time and only update if newer
-                    self.appState = msg.state
-                default:
-                    print("Unknown message type: \(msg.type)")
-                }
-            }
-            conn.onConnectCallback = { self.saveState(appState: appState) }
-        }
-        .onDisappear {
-            self.saveState(appState: appState)
         }
     }
 }
@@ -111,50 +94,49 @@ struct MessageView: View {
     }
 }
 
+
 struct SettingsView: View {
+    // maybe passing a copy & a callback from the parent is cleaner?
     @Binding var settings: Settings
-    var conn: ConnectionManager
 
     var body: some View {
-        NavigationView {
-            VStack {
-                HStack {
-                    Text("Trigger Prompt")
-                        .frame(maxWidth: .infinity)
-                    Text("Response Prompt")
-                        .frame(maxWidth: .infinity)
-                }
-                .font(.headline)
-                .padding([.top, .horizontal])
-                
-                List {
-                    ForEach(settings.prompts.indices, id: \.self) { index in
-                        HStack {
-                            TextEditor(text: $settings.prompts[index].trigger)
-                                .frame(minHeight: 100)
-                                .padding(4)
-                                .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
-                            
-                            TextEditor(text: $settings.prompts[index].response)
-                                .frame(minHeight: 100)
-                                .padding(4)
-                                .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
-                        }
-                        .padding([.vertical], 8)
+        VStack {
+            HStack {
+                Text("Trigger Prompt")
+                    .frame(maxWidth: .infinity)
+                Text("Response Prompt")
+                    .frame(maxWidth: .infinity)
+            }
+            .font(.headline)
+            .padding([.top, .horizontal])
+            
+            List {
+                ForEach(settings.prompts.indices, id: \.self) { index in
+                    HStack {
+                        TextEditor(text: $settings.prompts[index].trigger)
+                            .frame(minHeight: 100)
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
+                        
+                        TextEditor(text: $settings.prompts[index].response)
+                            .frame(minHeight: 100)
+                            .padding(4)
+                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
                     }
-                    .onDelete(perform: deleteItem) // TODO: Better delete
-                    .onMove(perform: moveItem)
+                    .padding([.vertical], 8)
+                }
+                .onDelete(perform: deleteItem) // TODO: Better delete
+                .onMove(perform: moveItem)
+            }
+        }
+        .padding()
+        .toolbar(content: {
+            HStack {
+                Button(action: addItem) {
+                    Label("Add", systemImage: "plus")
                 }
             }
-            .padding()
-            .toolbar(content: {
-                HStack {
-                    Button(action: addItem) {
-                        Label("Add", systemImage: "plus")
-                    }
-                }
-            })
-        }
+        })
     }
 
     private func addItem() {
@@ -279,7 +261,6 @@ class ConnectionManager {
                 print("Error message json: \(text)")
             }
         default:
-            // TODO: Handle other disconnection events
             print("Not handling \(event)")
             break
         }
@@ -287,28 +268,102 @@ class ConnectionManager {
 }
 
 
+// Keeps app state in sync with server through an onChange callback handler.
+class StateSyncManager {
+    public var conn: ConnectionManager
+
+    // keep state up to date.
+    private var lastUpdate: Int // last update in epoch time
+    private let updateFreq: Int // send updated state every n seconds (if state changed)
+    private var timer: Timer?
+
+    init(conn: ConnectionManager, updateFreq: Int = 2) {
+        self.conn = conn
+        self.updateFreq = updateFreq
+        self.lastUpdate = 0
+    }
+
+    func timeSinceLastUpdate() -> Int {
+        return Int(Date().timeIntervalSince1970) - lastUpdate
+    }
+
+    func onStateChange(_ appState: AppState) {
+        let timeSince = timeSinceLastUpdate()
+        if timeSince >= updateFreq {
+            print("Last update was \(timeSince) seconds ago. Syncing state...")
+            syncState(appState)
+        } else {
+            print("Last update was \(timeSince) seconds ago. Scheduling sync in \(updateFreq - timeSince) seconds...")
+            trySyncAfter(appState, timeToWait: updateFreq - timeSince)
+        }
+    }
+
+    // NOTE: Probably too clever for its own good. This exists to avoid
+    // cases where appState changes multiple times in quick succession, then
+    // the app is closed before the state can be synced. This would result in
+    // lost data. At least this is isolated from the rest of the app...
+    func trySyncAfter(_ appState: AppState, timeToWait: Int) {
+        // cancel any existing timer; we want to sync the most recent state change
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: Double(timeToWait), repeats: false) { _ in
+            // we didn't handle the previous state change, so we push it again
+            // to handle it now.
+            self.onStateChange(appState)
+            self.timer = nil
+        }
+    }
+
+    func syncState(_ appState: AppState) {
+        conn.send(WebSocketMessage(type: "state", state: appState))
+        lastUpdate = Int(Date().timeIntervalSince1970)
+    }
+}
+
+
 @main
 struct MyApp: App {
-    @State var appState = AppState(
+    @State var appState: AppState = AppState(
         machineId: getMachineId(),
         username: NSUserName(),
         messages: [],
-        settings: Settings(prompts: [])
+        settings: Settings(prompts: [], checkInInterval: 300) // TODO: make checkInInterval configurable
     )
-    var conn = ConnectionManager()
+    var conn: ConnectionManager
+    var sync: StateSyncManager
+
+    init() {
+        conn = ConnectionManager()
+        sync = StateSyncManager(conn: conn)
+    }
 
     var body: some Scene {
         WindowGroup {
             NavigationView {
                 List {
-                    NavigationLink(destination: ChatView(appState: $appState, conn: conn)) {
+                    NavigationLink(destination: ChatView(appState: $appState, sync: sync)) {
                         Text("Chat")
                     }
-                    NavigationLink(destination: SettingsView(settings: $appState.settings, conn: conn)) {
+                    NavigationLink(destination: SettingsView(settings: $appState.settings)) {
                         Text("Settings")
                     }
                 }
-                ChatView(appState: $appState, conn: conn)
+                ChatView(appState: $appState, sync: sync)
+            }
+            .onAppear {
+                conn.onMessageCallback = { msg in
+                    switch msg.type {
+                    case "state":
+                        print("Received state: \(msg.state)")
+                        // TODO: Check creation time and only update if newer
+                        self.appState = msg.state
+                    default:
+                        print("Unknown message type: \(msg.type)")
+                    }
+                }
+                conn.onConnectCallback = { sync.syncState(appState) }
+            }
+            .onChange(of: appState) { newState in
+                sync.onStateChange(newState)
             }
         }
     }
