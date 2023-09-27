@@ -7,11 +7,21 @@ struct AppState: Codable {
     var machineId: String
     var username: String
     var messages: [Message]
+    var settings: Settings
 }
 
 struct Message: Codable {
     let content: String
     let role: String // user, assistant, or system
+}
+
+struct PromptPair: Codable {
+    var trigger: String
+    var response: String
+}
+
+struct Settings: Codable {
+    var prompts: [PromptPair]
 }
 
 
@@ -56,6 +66,12 @@ struct ChatView: View {
             .padding()
         }
         .onAppear {
+            for window in getVisibleWindows() {
+                if let name = window["kCGWindowName"] {
+                    print("TITLE: \(name) OWNER: \(window["kCGWindowOwnerName"]!)")
+                }
+            }
+
             self.saveState(appState: appState)
             conn.onMessageCallback = { msg in
                 switch msg.type {
@@ -94,6 +110,68 @@ struct MessageView: View {
         }
     }
 }
+
+struct SettingsView: View {
+    @Binding var settings: Settings
+    var conn: ConnectionManager
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                HStack {
+                    Text("Trigger Prompt")
+                        .frame(maxWidth: .infinity)
+                    Text("Response Prompt")
+                        .frame(maxWidth: .infinity)
+                }
+                .font(.headline)
+                .padding([.top, .horizontal])
+                
+                List {
+                    ForEach(settings.prompts.indices, id: \.self) { index in
+                        HStack {
+                            TextEditor(text: $settings.prompts[index].trigger)
+                                .frame(minHeight: 100)
+                                .padding(4)
+                                .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
+                            
+                            TextEditor(text: $settings.prompts[index].response)
+                                .frame(minHeight: 100)
+                                .padding(4)
+                                .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
+                        }
+                        .padding([.vertical], 8)
+                    }
+                    .onDelete(perform: deleteItem) // TODO: Better delete
+                    .onMove(perform: moveItem)
+                }
+            }
+            .padding()
+            .toolbar(content: {
+                HStack {
+                    Button(action: addItem) {
+                        Label("Add", systemImage: "plus")
+                    }
+                }
+            })
+        }
+    }
+
+    private func addItem() {
+        let newItem = PromptPair(trigger: "", response: "")
+        settings.prompts.append(newItem)
+    }
+
+    private func deleteItem(at offsets: IndexSet) {
+        settings.prompts.remove(atOffsets: offsets)
+    }
+
+    private func moveItem(from source: IndexSet, to destination: Int) {
+        settings.prompts.move(fromOffsets: source, toOffset: destination)
+    }
+}
+
+
 
 // WebSocket Implementation that automatically buffers messages and reconnects 
 class ConnectionManager {
@@ -214,13 +292,24 @@ struct MyApp: App {
     @State var appState = AppState(
         machineId: getMachineId(),
         username: NSUserName(),
-        messages: []
+        messages: [],
+        settings: Settings(prompts: [])
     )
     var conn = ConnectionManager()
 
     var body: some Scene {
         WindowGroup {
-            ChatView(appState: $appState, conn: conn)
+            NavigationView {
+                List {
+                    NavigationLink(destination: ChatView(appState: $appState, conn: conn)) {
+                        Text("Chat")
+                    }
+                    NavigationLink(destination: SettingsView(settings: $appState.settings, conn: conn)) {
+                        Text("Settings")
+                    }
+                }
+                ChatView(appState: $appState, conn: conn)
+            }
         }
     }
 }
