@@ -5,7 +5,7 @@ import os
 import json
 import httpx
 import asyncio
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import List, Optional
 
 # run source ../.env to get path variables
@@ -60,16 +60,25 @@ client = httpx.AsyncClient(
 )
 
 
+# Pydantic models for app state
+
 class Message(BaseModel):
     role: str
     content: str
 
+class PromptPair(BaseModel):
+    trigger: str
+    response: str
 
-# Pydantic model for app state. Has to be conservative to support past app versions.
+class Settings(BaseModel):
+    prompts: List[PromptPair]
+    check_in_interval: int
+
 class AppState(BaseModel):
     machine_id: str
     username: str
     messages: List[Message]
+    settings: Settings
 
 
 class WebSocketHandler():
@@ -98,7 +107,12 @@ class WebSocketHandler():
 
             if msg['type'] == 'state':
                 print('got state from client')
-                self.app_state = AppState(**msg['state'])
+                try:
+                    self.app_state = AppState.model_validate(msg['state'])
+                except ValidationError as e:
+                    print(e)
+                    await self.ws.close()
+                    return
 
                 # FIXME: Weird bug where new msg isn't included. probably a race condition.
                 # I need to track dates inside the app state & db.
@@ -166,7 +180,11 @@ class WebSocketHandler():
                 LIMIT 1
             """, (user_id,)).fetchone()
             if rows:
-                return AppState(**json.loads(rows[0]))
+                try:
+                    return AppState.model_validate_json(rows[0])
+                except ValidationError as e:
+                    print(f"DB appState for {user_id} is invalid: {e}" )
+                    return None
 
 
     def get_user_id(self, s: AppState) -> int:
