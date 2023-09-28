@@ -84,6 +84,8 @@ struct MessageView: View {
                 .background(
                     message.role == "user" ? Color.blue
                     : message.role == "assistant" ? Color.gray
+                    : message.role == "system" ? Color.green
+                    : message.role == "debug" ? Color.purple
                     : Color.red
                 )
                 .cornerRadius(10)
@@ -99,9 +101,9 @@ struct SettingsView: View {
     var body: some View {
         VStack {
             HStack {
-                Text("Trigger Prompt")
+                Text("Trigger")
                     .frame(maxWidth: .infinity)
-                Text("Response Prompt")
+                Text("Response")
                     .frame(maxWidth: .infinity)
             }
             .font(.headline)
@@ -270,7 +272,7 @@ class StateSyncManager {
     private let updateFreq: Int // send updated state every n seconds (if state changed)
     private var timer: Timer?
 
-    init(conn: ConnectionManager, updateFreq: Int = 2) {
+    init(conn: ConnectionManager, updateFreq: Int = 10) {
         self.conn = conn
         self.updateFreq = updateFreq
         self.lastUpdate = 0
