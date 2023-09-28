@@ -9,6 +9,7 @@ struct AppState: Codable, Equatable {
 
     var messages: [Message]
     var settings: Settings
+    var activity: Activity
 }
 
 struct Message: Codable, Equatable {
@@ -19,6 +20,10 @@ struct Message: Codable, Equatable {
 struct PromptPair: Codable, Equatable {
     var trigger: String
     var response: String
+}
+
+struct Activity: Codable, Equatable {
+    var visibleWindows: [Window]
 }
 
 struct Settings: Codable, Equatable {
@@ -62,14 +67,6 @@ struct ChatView: View {
                 Button("Send") { self.send() }
             }
             .padding()
-        }
-        .onAppear {
-            // TODO: Use this somewhere
-            for window in getVisibleWindows() {
-                if let name = window["kCGWindowName"] {
-                    print("TITLE: \(name) OWNER: \(window["kCGWindowOwnerName"]!)")
-                }
-            }
         }
     }
 }
@@ -169,10 +166,6 @@ class ConnectionManager {
     public var onConnectCallback: () -> Void = { }
 
     init() {
-        // should have compromised and used snake_case in the model, but I didn't,
-        // and now that I figured out how to do this, I'm not changing it ;)
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
         self.attemptReconnect()
     }
 
@@ -326,10 +319,12 @@ struct MyApp: App {
         machineId: getMachineId(),
         username: NSUserName(),
         messages: [],
-        settings: Settings(prompts: [], checkInInterval: 300) // TODO: make checkInInterval configurable
+        settings: Settings(prompts: [], checkInInterval: 300), // TODO: make checkInInterval configurable
+        activity: Activity(visibleWindows: getVisibleWindows())
     )
     var conn: ConnectionManager
     var sync: StateSyncManager
+    @State var timer: Timer? // TODO: check no weird update properties
 
     init() {
         conn = ConnectionManager()
@@ -361,6 +356,16 @@ struct MyApp: App {
                     }
                 }
                 conn.onConnectCallback = { sync.syncState(appState) }
+
+
+                // update activity information frequently
+                timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+                    appState.activity = Activity(visibleWindows: getVisibleWindows())
+                }
+            }
+            .onDisappear {
+                // NOTE: probably not needed if the app is closing
+                timer?.invalidate()
             }
             .onChange(of: appState) { newState in
                 sync.onStateChange(newState)

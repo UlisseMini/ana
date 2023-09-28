@@ -1,8 +1,29 @@
 import Foundation
 import CoreGraphics
 
-func getVisibleWindows() -> [[String: Any]] {
-    var visibleWindows: [[String: Any]] = []
+struct WindowBounds: Codable, Equatable {
+    let height: Int
+    let width: Int
+    let x: Int
+    let y: Int
+}
+
+struct Window: Codable, Equatable {
+    // let kCGWindowOwnerPID: Int
+    // let kCGWindowStoreType: Int
+    // let kCGWindowIsOnscreen: Int
+    // let kCGWindowNumber: Int
+    let kCGWindowName: String
+    // let kCGWindowBounds: WindowBounds
+    // let kCGWindowLayer: Int
+    // let kCGWindowMemoryUsage: Int
+    // let kCGWindowAlpha: Int
+    let kCGWindowOwnerName: String
+    // let kCGWindowSharingState: Int
+}
+
+func getVisibleWindows() -> [Window] {
+    var visibleWindows: [Window] = []
 
     let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
     let windowListInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as! [[String: Any]]
@@ -15,7 +36,7 @@ func getVisibleWindows() -> [[String: Any]] {
         let title = window[kCGWindowName as String] as? String,
         let owner = window[kCGWindowOwnerName as String] as? String,
         isOnScreen && layer == 0 && !title.isEmpty && !excludeOwners.contains(owner) {
-            visibleWindows.append(window)
+            visibleWindows.append(Window(kCGWindowName: title, kCGWindowOwnerName: owner))
         }
     }
 

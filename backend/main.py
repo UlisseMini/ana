@@ -5,7 +5,7 @@ import os
 import json
 import httpx
 import asyncio
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field
 from typing import List, Optional
 
 # run source ../.env to get path variables
@@ -72,13 +72,21 @@ class PromptPair(BaseModel):
 
 class Settings(BaseModel):
     prompts: List[PromptPair]
-    check_in_interval: int
+    check_in_interval: int = Field(..., alias='checkInInterval')
+
+
+Window = dict
+
+class Activity(BaseModel):
+    visible_windows: List[Window] = Field(..., alias='visibleWindows')
+
 
 class AppState(BaseModel):
-    machine_id: str
+    machine_id: str = Field(..., alias='machineId')
     username: str
     messages: List[Message]
     settings: Settings
+    activity: Activity
 
 
 class WebSocketHandler():
@@ -129,14 +137,36 @@ class WebSocketHandler():
                     self.save_state()
 
                 if self.app_state.messages and self.app_state.messages[-1].role != 'assistant':
-                    print(f'responding to {self.app_state.messages[-1].content}')
-                    await self.respond_to_msg()
+                    await self.handle_msg()
+
+
+    async def handle_msg(self):
+        msg = self.app_state.messages[-1].content
+        print(f'handling {msg}')
+        if msg == '/clear':
+            self.app_state.messages = []
+            await self.send_state()
+            self.save_state()
+        else:
+            await self.respond_to_msg()
 
 
     async def respond_to_msg(self):
-        sys_prompt = "You are a helpful assistant who responds with concise and helpful ~20 word texts. You ask questions before proposing things, both to make sure you understand and make the user feel understood."
-        messages = [{'role': 'system', 'content': sys_prompt}]
-        messages += [m.model_dump() for m in self.app_state.messages]
+        sys_prompt = "You are a friendly assistant who responds with concise and helpful ~20 word texts. You write in a friendly, informal texting style as you would to a friend."
+        print(self.app_state.activity)
+        print(self.app_state.activity.visible_windows)
+        activity = '\n- '.join([
+            w['kCGWindowName'] for w in
+            self.app_state.activity.visible_windows
+        ])
+        activity_prompt = f"The user's current visible windows are:\n- {activity}"
+        messages = [
+            {'role': 'system', 'content': sys_prompt + '\n\n' + activity_prompt}
+        ]
+        messages += [m.model_dump() for m in self.app_state.messages if m.role != 'system']
+        # messages += [{'role': 'user', 'content': activity_prompt}]
+        # update messages; the displayed messages should always match what GPT is seeing.
+        self.app_state.messages = [Message.model_validate(m) for m in messages]
 
         message = Message(role='assistant', content='')
         self.app_state.messages.append(message)
@@ -204,7 +234,7 @@ class WebSocketHandler():
 
     async def send_state(self):
         print('sending state to client')
-        await self.ws.send_json({"type": "state", "state": self.app_state.model_dump()})
+        await self.ws.send_json({"type": "state", "state": self.app_state.model_dump(by_alias=True)})
 
 
     def save_state(self):
@@ -215,7 +245,7 @@ class WebSocketHandler():
             c.execute("""
                 INSERT INTO app_states (user_id, state_json)
                 VALUES (?, ?)
-            """, (self.user_id, json.dumps(self.app_state.model_dump())))
+            """, (self.user_id, self.app_state.model_dump_json(by_alias=True)))
             self.db.commit()
 
 
