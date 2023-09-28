@@ -303,8 +303,8 @@ class WebSocketHandler():
 
     async def debug(self, msg: str):
         print('DEBUG', msg)
-        self.app_state.messages.append(Message(role='debug', content=msg))
-        await self.send_state()
+        # self.app_state.messages.append(Message(role='debug', content=msg))
+        # await self.send_state()
 
     # TODO: Move to aiosqlite3
     def get_app_state(self, user_id: int) -> Optional[AppState]:
