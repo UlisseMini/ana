@@ -32,10 +32,19 @@ struct Settings: Codable, Equatable {
 }
 
 
+struct Notification: Codable, Equatable {
+    let title: String
+    let body: String
+}
+
 // WebSocket Definitions
-struct WebSocketMessage: Codable, Equatable {
+struct PartialWebSocketMessage: Codable {
     let type: String
-    let state: AppState
+}
+
+struct WebSocketMessage<T: Codable>: Codable {
+    let type: String
+    let data: T
 }
 
 
@@ -164,14 +173,14 @@ class ConnectionManager {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    public var onMessageCallback: (WebSocketMessage) -> Void = { _ in }
+    public var onMessageCallback: ((String, Data) throws -> Void) = { _, _ in }
     public var onConnectCallback: () -> Void = { }
 
     init() {
         self.attemptReconnect()
     }
 
-    func send(_ msg: WebSocketMessage) {
+    func send<T>(_ msg: WebSocketMessage<T>) {
         if let data = try? encoder.encode(msg),
             let text = String(data: data, encoding: .utf8) {
             self.write(string: text)
@@ -249,9 +258,10 @@ class ConnectionManager {
             // attempt to decode as WebSocketMessage
             let jsonData = Data(text.utf8)
             do {
-                let msg = try decoder.decode(WebSocketMessage.self, from: jsonData)
-                self.onMessageCallback(msg)
+                let msg = try decoder.decode(PartialWebSocketMessage.self, from: jsonData)
+                try self.onMessageCallback(msg.type, jsonData)
             } catch {
+                // TODO: Handle error from onMessageCallback
                 print("Error decoding WebSocketMessage: \(error)")
                 print("Error message json: \(text)")
             }
@@ -285,10 +295,10 @@ class StateSyncManager {
     func onStateChange(_ appState: AppState) {
         let timeSince = timeSinceLastUpdate()
         if timeSince >= updateFreq {
-            print("Last update was \(timeSince) seconds ago. Syncing state...")
+            // print("Last update was \(timeSince) seconds ago. Syncing state...")
             syncState(appState)
         } else {
-            print("Last update was \(timeSince) seconds ago. Scheduling sync in \(updateFreq - timeSince) seconds...")
+            // print("Last update was \(timeSince) seconds ago. Scheduling sync in \(updateFreq - timeSince) seconds...")
             trySyncAfter(appState, timeToWait: updateFreq - timeSince)
         }
     }
@@ -309,7 +319,7 @@ class StateSyncManager {
     }
 
     func syncState(_ appState: AppState) {
-        conn.send(WebSocketMessage(type: "state", state: appState))
+        conn.send(WebSocketMessage(type: "state", data: appState))
         lastUpdate = Int(Date().timeIntervalSince1970)
     }
 }
@@ -347,14 +357,20 @@ struct MyApp: App {
                 ChatView(appState: $appState, sync: sync)
             }
             .onAppear {
-                conn.onMessageCallback = { msg in
-                    switch msg.type {
+                requestScreenRecordingPermission()
+                conn.onMessageCallback = { type, data in
+                    switch type {
                     case "state":
-                        print("Received state: \(msg.state)")
+                        let msg = try JSONDecoder().decode(WebSocketMessage<AppState>.self, from: data)
+
                         // TODO: Check creation time and only update if newer
-                        self.appState = msg.state
+                        self.appState = msg.data
+                    case "notification":
+                        let msg = try JSONDecoder().decode(WebSocketMessage<Notification>.self, from: data)
+                        print("Received notification: \(msg.data)")
+                        showNotification(title: msg.data.title, body: msg.data.body)
                     default:
-                        print("Unknown message type: \(msg.type)")
+                        print("Unknown message type: \(type)")
                     }
                 }
                 conn.onConnectCallback = { sync.syncState(appState) }

@@ -71,6 +71,21 @@ openai = httpx.AsyncClient(
     timeout=100,
 )
 
+hf = httpx.AsyncClient(
+    base_url="http://localhost:8009",
+    timeout=100,
+)
+
+
+async def classify(inputs: str, labels: List[str]):
+    response = await hf.post("/models/facebook/bart-large-mnli", json={
+        "inputs": inputs,
+        "parameters": {"candidate_labels": labels},
+        "multi_label": True,
+        "wait_for_model": True
+    })
+    return response
+
 
 async def stream_completion(body):
     message = Message(role='', content='')
@@ -158,7 +173,7 @@ class WebSocketHandler():
             if msg['type'] == 'state':
                 print('got state from client')
                 try:
-                    self.app_state = AppState.model_validate(msg['state'])
+                    self.app_state = AppState.model_validate(msg['data'])
                 except ValidationError as e:
                     print(e)
                     await self.ws.close()
@@ -184,65 +199,19 @@ class WebSocketHandler():
 
     async def check_in(self):
         self.last_check_in = time.time()
-        for p in self.app_state.settings.prompts:
-            trigger = await self.should_trigger(p.trigger)
-            if trigger:
-                prompt = CHECK_IN_PROMPT.format(trigger=p.trigger, response=p.response)
-                self.app_state.messages.append(Message(role='user', content=prompt))
-                await self.respond_to_msg()
-                break
-
-
-    async def should_trigger(self, trigger_question: str):
-        # TODO: Add chain of thought (requires re-call for functions)
-        prompt = f'Is user currently {trigger_question}? Call the trigger function with the answer.'
-        prompt += "\n" + self.get_activity_text()
-        messages = [{'role': 'user', 'content': prompt}]
-        resp = await openai.post(
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-3.5-turbo",
-                "messages": messages,
-                "functions": [
-                    {
-                        # this should be either True or False, always called.
-                        "name": "trigger",
-                        "description": "Pass true if the condition is true, false otherwise.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "trigger": {
-                                    "type": "boolean"
-                                }
-                            },
-                            "required": ["trigger"],
-                        },
-                    }
-                ],
-                "max_tokens": 100,
-                "temperature": 0,
-            }
-        )
-        resp.raise_for_status()
-        resp_data = resp.json()
-        message = resp_data['choices'][0]['message']
-        # trigger iff the message is a function call to trigger
-        trigger = False
-        if message.get("function_call") and message["function_call"]["name"] == 'trigger':
-            print(message["function_call"])
-            # TypeError: string indices must be integers
-            try:
-                arguments = json.loads(message["function_call"]["arguments"])
-                print(arguments)
-                print(arguments["trigger"])
-                trigger = arguments["trigger"]
-            except json.JSONDecodeError:
-                pass
+        triggers = [p.trigger for p in self.app_state.settings.prompts]
+        activity_text = self.get_activity_text()
+        if len(triggers) > 0:
+            resp = await classify(activity_text, labels=triggers)
+            for i, score in enumerate(resp.json()['scores']):
+                await self.debug(f"trigger {triggers[i]} scored {score:.4f} from activity\n{activity_text}")
+                if score > 0.5:
+                    prompt = CHECK_IN_PROMPT.format(trigger=triggers[i], response=self.app_state.settings.prompts[i].response)
+                    self.app_state.messages.append(Message(role='user', content=prompt))
+                    await self.respond_to_msg()
+                    break
         else:
-            print('WARNING: no trigger call')
-
-        await self.debug(f"trigger {trigger_question} --> {trigger} from prompt:\n\n{prompt}")
-        return trigger
+            print("No triggers defined yet.")
 
 
     async def handle_msg(self):
@@ -289,22 +258,26 @@ class WebSocketHandler():
             self.app_state.messages.insert(0, Message(role='system', content=sys_prompt))
 
 
+        message = None
         async for message in stream_completion({
             # 3.5 wasn't able to follow the extremely hard instruction of "send short messages"
             "model": "gpt-4",
             "messages": self.dump_filtered_messages(),
-            "max_tokens": 200,
+            "max_tokens": 1000, # will use much less
         }):
             if self.app_state.messages[-1] is not message:
                 self.app_state.messages.append(message)
 
             await self.send_state()
+        if message:
+            await self.notify(title="BossGPT", body=message.content)
+        self.save_state()
 
 
     async def debug(self, msg: str):
         print('DEBUG', msg)
-        # self.app_state.messages.append(Message(role='debug', content=msg))
-        # await self.send_state()
+        self.app_state.messages.append(Message(role='debug', content=msg))
+        await self.send_state()
 
     # TODO: Move to aiosqlite3
     def get_app_state(self, user_id: int) -> Optional[AppState]:
@@ -342,7 +315,7 @@ class WebSocketHandler():
 
     async def send_state(self):
         # print('sending state to client')
-        await self.ws.send_json({"type": "state", "state": self.app_state.model_dump(by_alias=True)})
+        await self.ws.send_json({"type": "state", "data": self.app_state.model_dump(by_alias=True)})
 
 
     def save_state(self):
@@ -363,6 +336,12 @@ class WebSocketHandler():
             return json.loads(text)
         except asyncio.TimeoutError:
             return None
+
+
+    async def notify(self, title: str, body: str):
+        "Send a notification to the user's machine"
+        print(f"Sending notification: {title} - {body}")
+        await self.ws.send_json({"type": "notification", "data": {"title": title, "body": body}})
 
 
 @app.websocket("/ws")
