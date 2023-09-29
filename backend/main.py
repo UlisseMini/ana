@@ -6,6 +6,7 @@ import json
 import httpx
 import time
 import asyncio
+import re
 from pydantic import BaseModel, ValidationError, Field
 from typing import List, Optional
 
@@ -24,7 +25,7 @@ You are a friendly assistant who responds with short 20 word texts. You write in
 
 # TODO: Should be a default configurable by the users?
 CHECK_IN_PROMPT = f"""
-I'm {{trigger}}, can you {{response}}?
+AUTOMATED MESSAGE: {{response}}
 """.strip()
 
 
@@ -70,21 +71,6 @@ openai = httpx.AsyncClient(
     headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
     timeout=100,
 )
-
-hf = httpx.AsyncClient(
-    base_url="http://localhost:8009",
-    timeout=100,
-)
-
-
-async def classify(inputs: str, labels: List[str]):
-    response = await hf.post("/models/facebook/bart-large-mnli", json={
-        "inputs": inputs,
-        "parameters": {"candidate_labels": labels},
-        "multi_label": True,
-        "wait_for_model": True
-    })
-    return response
 
 
 async def stream_completion(body):
@@ -199,17 +185,22 @@ class WebSocketHandler():
 
     async def check_in(self):
         self.last_check_in = time.time()
-        triggers = [p.trigger for p in self.app_state.settings.prompts]
-        activity_text = self.get_activity_text()
-        if len(triggers) > 0:
-            resp = await classify(activity_text, labels=triggers)
-            for i, score in enumerate(resp.json()['scores']):
-                await self.debug(f"trigger {triggers[i]} scored {score:.4f} from activity\n{activity_text}")
-                if score > 0.5:
-                    prompt = CHECK_IN_PROMPT.format(trigger=triggers[i], response=self.app_state.settings.prompts[i].response)
-                    self.app_state.messages.append(Message(role='user', content=prompt))
-                    await self.respond_to_msg()
-                    break
+        activity_text = self.get_activity_text(prefix="")
+        for p in self.app_state.settings.prompts:
+            match = re.search(p.trigger, activity_text, re.IGNORECASE)
+            # get the line of the match (like grep)
+
+            if match:
+                await self.debug(f"regex {p.trigger} matched:\n{activity_text}")
+                self.app_state.messages.append(Message(
+                    role='user',
+                    content=(
+                        CHECK_IN_PROMPT.format(trigger=p.trigger, response=p.response) +
+                        '\n\n' + self.get_activity_text()
+                    )
+                ))
+                await self.respond_to_msg()
+                break
         else:
             print("No triggers defined yet.")
 
@@ -233,13 +224,12 @@ class WebSocketHandler():
         else:
             await self.respond_to_msg()
 
-    def get_activity_text(self) -> str:
+    def get_activity_text(self, prefix="The user's current visible windows are:\n- ") -> str:
         activity = '\n- '.join([
             w['kCGWindowOwnerName'] + ' - ' + w['kCGWindowName'] for w in
             self.app_state.activity.visible_windows
         ])
-        activity_prompt = f"The user's current visible windows are:\n- {activity}"
-        return activity_prompt
+        return prefix + activity
 
 
     def dump_filtered_messages(self, roles=('user', 'assistant')):
@@ -251,7 +241,7 @@ class WebSocketHandler():
         "Respond to the most recent user message in app_state.messages"
 
         # prepend system prompt
-        sys_prompt = SYSTEM_PROMPT + '\n\n' + self.get_activity_text()
+        sys_prompt = SYSTEM_PROMPT
         if self.app_state.messages[0].role == 'system':
             self.app_state.messages[0].content = sys_prompt
         else:

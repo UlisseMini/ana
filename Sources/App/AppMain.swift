@@ -110,7 +110,7 @@ struct SettingsView: View {
     var body: some View {
         VStack {
             HStack {
-                Text("Trigger")
+                Text("Trigger regex")
                     .frame(maxWidth: .infinity)
                 Text("Response")
                     .frame(maxWidth: .infinity)
@@ -122,12 +122,12 @@ struct SettingsView: View {
                 ForEach(settings.prompts.indices, id: \.self) { index in
                     HStack {
                         TextEditor(text: $settings.prompts[index].trigger)
-                            .frame(minHeight: 100)
+                            // .frame(minHeight: 100)
                             .padding(4)
                             .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
                         
                         TextEditor(text: $settings.prompts[index].response)
-                            .frame(minHeight: 100)
+                            // .frame(minHeight: 100)
                             .padding(4)
                             .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
                     }
