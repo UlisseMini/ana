@@ -103,7 +103,7 @@ struct DaemonApp {
                 print("Failed to capture screenshot")
             }
             
-            try await Task.sleep(nanoseconds: 10 * 1000_000_000)
+            try await Task.sleep(nanoseconds: 300 * 1000_000_000)
         }
     }
 }
