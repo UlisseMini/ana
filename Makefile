@@ -47,7 +47,7 @@ plist:
 
 
 dev:
-	find Sources Package.swift | entr -rc sh -c "make debug -s && codesign -s 'Apple Development' BossGPT && VERSION=$(VERSION) ./BossGPT"
+	find Sources Package.swift | entr -rc sh -c "make debug -s && echo Signing... && codesign -s 'Apple Development' BossGPT && VERSION=$(VERSION) ./BossGPT"
 
 
 clean:
