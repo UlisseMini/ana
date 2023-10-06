@@ -2,7 +2,7 @@
 
 _The AI that helps you achieve your goals._
 
-![](images/example1.png)
+![Example of the user being interrupted with a notification during a YouTube video](images/example1.png)
 
 Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features!
 
@@ -10,13 +10,13 @@ Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features
 
 Download the `.app.zip` release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page, unzip it, right click and press "Open"
 
-Then configure settings. Here are my settings
+Tell the AI when to interrupt you, e.g.
 
-![](images/settings.png)
+![Example setup conversation where user asks to be interrupted when on discord during work hours, except for EleutherAI which is necessary for research](images/setup1.png)
 
-After you configure that the AI will check if you've been spending time on a time-sink every 10 minutes. There's no flashy indicator that everything worked right now, but trust me, it works.
+After you configure that the AI will check in on you every 10 minutes. To test it, you can "fast-forward" by pressing option+command+c to trigger a check-in immediately on the currently visible windows.
 
-(Okay it might not work, in which case you can open an issue or bug us on [discord](https://discord.gg/JQnNyAZeFk).)
+If it doesn't work please open an issue or bug us on [discord](https://discord.gg/JQnNyAZeFk). I want to solve people's executive function problems!
 
 ## Motivation
 
