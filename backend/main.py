@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError, Field
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
+import pytz
 
 # run source ../.env to get path variables
 from dotenv import load_dotenv
@@ -40,7 +41,9 @@ AUTOMATED MESSAGE: A user activity report is given below. Interrupt the user if 
 
 
 ON_TRIGGER_MESSAGE = """
-AUTOMATED MESSAGE: The user has been interrupted because their activity matched a rule they gave for interrupting them. Send a short text asking the user what they're doing and why.
+AUTOMATED MESSAGE: The user has been interrupted due to the following reasoning: "{reasoning}"
+
+Send a ~20 word text asking the user what they're doing and why. Encourage them to do what they said they wanted to do.
 
 {activity}
 """.strip()
@@ -159,6 +162,7 @@ class PromptPair(BaseModel):
 class Settings(BaseModel):
     prompts: List[PromptPair]
     check_in_interval: int = Field(..., alias='checkInInterval')
+    timezone: str
 
 
 Window = dict
@@ -240,6 +244,7 @@ class WebSocketHandler():
 
         # for fast-forward: a (time, activity_summary) pair
         self.fastfwd: Optional[Tuple[datetime, str]] = None
+        self.DEBUG = False
 
         # TODO: Ensure no two clients from the same computer can connect at once.
 
@@ -277,7 +282,10 @@ class WebSocketHandler():
                     self.save_state()
 
                 if not self.app_state.messages:
-                    self.app_state.messages.append(Message(role='assistant', content=INITIAL_MESSAGE))
+                    self.app_state.messages += [
+                        Message(role='system', content=SYSTEM_PROMPT),
+                        Message(role='assistant', content=INITIAL_MESSAGE)
+                    ]
                     await self.send_state()
 
 
@@ -300,7 +308,7 @@ class WebSocketHandler():
         """
 
         last_n_seconds = self.app_state.settings.check_in_interval
-        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+        now = datetime.now(tz=pytz.timezone(self.app_state.settings.timezone))
         activity = await self.get_activity_summary(now - timedelta(seconds=last_n_seconds), now)
         if len(activity.strip().split('\n')) == 1:
             await self.debug("Not enough activity recorded to trigger yet")
@@ -316,36 +324,45 @@ class WebSocketHandler():
                 "messages": self.dump_filtered_messages() + [activity_msg.model_dump()],
                 "functions": [{
                     # this should be either True or False, always called.
-                    "name": "trigger",
+                    "name": "interrupt",
                     "description": "Pass true to interrupt the user, or false not to",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "trigger": {
-                                "type": "boolean"
+                            "reasoning": {
+                                "type": "string",
+                                "description": "Reasoning for interrupting (or not) followed by conclusion.",
+                            },
+                            "interrupt": {
+                                "type": "boolean",
+                                "description": "Whether to interrupt the user",
                             }
                         },
-                        "required": ["trigger"],
+                        "required": ["reasoning", "interrupt"],
                     },
                 }],
-                "max_tokens": 100,
+                "max_tokens": 200,
                 "temperature": 0,
             }
         )
         resp.raise_for_status()
         resp_data = resp.json()
         message = resp_data['choices'][0]['message']
-        trigger = False
-        if message.get("function_call") and message["function_call"]["name"] == 'trigger':
+        args = None
+        if message.get("function_call") and message["function_call"]["name"] == 'interrupt':
             try:
-                trigger = json.loads(message["function_call"]["arguments"])["trigger"]
+                args = json.loads(message["function_call"]["arguments"])
+                await self.debug(f"raw args: {message['function_call']['arguments']}")
             except json.JSONDecodeError:
                 pass
         else:
             await self.debug(f"no trigger call in response:\n{message}")
 
-        if trigger:
-            return Message(role='user', content=ON_TRIGGER_MESSAGE.format(activity=activity))
+        if args and args['interrupt']:
+            return Message(
+                role='user',
+                content=ON_TRIGGER_MESSAGE.format(activity=activity, reasoning=args['reasoning'])
+            )
 
 
     # TODO: Use or remove
@@ -382,7 +399,7 @@ class WebSocketHandler():
         msg = self.app_state.messages[-1].content
         print(f'handling {msg}')
         # TODO: Document msgs automatically for the user
-        cmds = ['/clear', '/checkin', '/activity', '/fastfwd']
+        cmds = ['/clear', '/checkin', '/activity', '/fastfwd', '/debug']
         if msg in cmds:
             self.app_state.messages.pop()
             if msg == '/clear':
@@ -400,6 +417,8 @@ class WebSocketHandler():
             elif msg == '/fastfwd':
                 await self.fast_forward()
                 await self.check_in()
+            elif msg == '/debug':
+                self.DEBUG = True
 
             await self.send_state()
         else:
@@ -420,7 +439,7 @@ class WebSocketHandler():
             title_time[ownerName][windowName] = check_in_interval // 60
 
         # Get activity summary
-        start = datetime.now(tz=timezone.utc).replace(tzinfo=None)
+        start = datetime.now(tz=pytz.timezone(self.app_state.settings.timezone))
         end = start + timedelta(seconds=check_in_interval)
         activity_summary = get_activity_summary_from_times(
             app_time, title_time, start=start, end=end
@@ -445,7 +464,7 @@ class WebSocketHandler():
     async def respond_to_msg(self):
         "Respond to the most recent user message in app_state.messages"
 
-        # prepend system prompt
+        # prepend system prompt if necessary
         sys_prompt = SYSTEM_PROMPT
         if self.app_state.messages[0].role == 'system':
             self.app_state.messages[0].content = sys_prompt
@@ -471,8 +490,9 @@ class WebSocketHandler():
 
     async def debug(self, msg: str):
         print('DEBUG', msg)
-        self.app_state.messages.append(Message(role='debug', content=msg))
-        await self.send_state()
+        if self.DEBUG:
+            self.app_state.messages.append(Message(role='debug', content=msg))
+            await self.send_state()
 
     # TODO: Move to aiosqlite3
     def get_app_state(self, user_id: int) -> Optional[AppState]:

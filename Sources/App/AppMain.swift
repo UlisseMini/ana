@@ -30,6 +30,7 @@ struct Activity: Codable, Equatable {
 struct Settings: Codable, Equatable {
     var prompts: [PromptPair]
     var checkInInterval: Int
+    var timezone: String
 }
 
 
@@ -266,6 +267,8 @@ class ConnectionManager {
                 print("Error decoding WebSocketMessage: \(error)")
                 print("Error message json: \(text)")
             }
+        case .ping(_):
+            break
         default:
             print("Not handling \(event)")
             break
@@ -332,7 +335,11 @@ struct MyApp: App {
         machineId: getMachineId(),
         username: NSUserName(),
         messages: [],
-        settings: Settings(prompts: [], checkInInterval: 300), // TODO: make checkInInterval configurable
+        settings: Settings(
+            prompts: [],
+            checkInInterval: 600,
+            timezone: TimeZone.current.identifier
+        ), // TODO: make checkInInterval configurable
         activity: Activity(visibleWindows: getVisibleWindows())
     )
     var conn: ConnectionManager
@@ -381,7 +388,7 @@ struct MyApp: App {
                 conn.onConnectCallback = { sync.syncState(appState) }
 
 
-                // update activity information frequently
+                // update activity information frequently. note: this triggers onChange.
                 timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
                     updateActivity()
                 }
@@ -391,7 +398,7 @@ struct MyApp: App {
                 timer?.invalidate()
             }
             .onChange(of: appState) { newState in
-                print("State changed!")
+                appState.settings.timezone = TimeZone.current.identifier
                 updateActivity()
                 sync.onStateChange(newState)
             }
