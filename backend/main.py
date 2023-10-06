@@ -43,16 +43,16 @@ AUTOMATED MESSAGE: A user activity report is given below. Interrupt the user if 
 ON_TRIGGER_MESSAGE = """
 AUTOMATED MESSAGE: The user has been interrupted due to the following reasoning: "{reasoning}"
 
-Send a ~20 word text asking the user what they're doing and why. Encourage them to do what they said they wanted to do.
+Ask the user what they're doing and why. Encourage them to do what they said they wanted to do.
 
 {activity}
 """.strip()
 
 
 INITIAL_MESSAGE = """
-Nice to meet you! I'm BossGPT, your friendly assistant who helps you stay focused.
+Nice to meet you! I'm BossGPT, your friendly assistant who helps you stay focused. I'll be checking in on you every {minutes} minutes.
 
-When should I check in with you? For example, "When I'm on youtube for more than 10 minutes before 5pm"
+Can you tell me when to interrupt you? For example, you could say "When I'm on youtube between 9am and 5pm, unless I'm watching math videos."
 """.strip()
 
 app = FastAPI()
@@ -282,9 +282,10 @@ class WebSocketHandler():
                     self.save_state()
 
                 if not self.app_state.messages:
+                    m = self.app_state.settings.check_in_interval // 60
                     self.app_state.messages += [
                         Message(role='system', content=SYSTEM_PROMPT),
-                        Message(role='assistant', content=INITIAL_MESSAGE)
+                        Message(role='assistant', content=INITIAL_MESSAGE.format(minutes=m))
                     ]
                     await self.send_state()
 
