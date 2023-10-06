@@ -31,6 +31,7 @@ struct Settings: Codable, Equatable {
     var prompts: [PromptPair]
     var checkInInterval: Int
     var timezone: String
+    var debug: Bool
 }
 
 
@@ -104,13 +105,16 @@ struct MessageView: View {
     }
 }
 
-
 struct SettingsView: View {
-    // maybe passing a copy & a callback from the parent is cleaner?
     @Binding var settings: Settings
 
     var body: some View {
-        Text("TODO")
+        List {
+            // TODO: Add more settings
+            Section(header: Text("Configuration")) {
+                Toggle("Debug Mode", isOn: $settings.debug)
+            }
+        }
     }
 }
 
@@ -293,7 +297,8 @@ struct MyApp: App {
         settings: Settings(
             prompts: [],
             checkInInterval: 600,
-            timezone: TimeZone.current.identifier
+            timezone: TimeZone.current.identifier,
+            debug: false
         ), // TODO: make checkInInterval configurable
         activity: Activity(visibleWindows: getVisibleWindows())
     )

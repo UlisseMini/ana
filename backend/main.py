@@ -163,6 +163,7 @@ class Settings(BaseModel):
     prompts: List[PromptPair]
     check_in_interval: int = Field(..., alias='checkInInterval')
     timezone: str
+    debug: bool = False
 
 
 Window = dict
@@ -244,7 +245,6 @@ class WebSocketHandler():
 
         # for fast-forward: a (time, activity_summary) pair
         self.fastfwd: Optional[Tuple[datetime, str]] = None
-        self.DEBUG = False
 
         # TODO: Ensure no two clients from the same computer can connect at once.
 
@@ -403,8 +403,6 @@ class WebSocketHandler():
         cmds = ['/clear', '/checkin', '/activity', '/fastfwd', '/debug']
         if msg in cmds:
             self.app_state.messages.pop()
-            debug = self.DEBUG
-            self.DEBUG = True
             if msg == '/clear':
                 args = msg.split(' ')
                 try:
@@ -421,9 +419,8 @@ class WebSocketHandler():
                 await self.fast_forward()
                 await self.check_in()
             elif msg == '/debug':
-                debug = True
+                self.app_state.settings.debug = True
 
-            self.DEBUG = debug
             await self.send_state()
         else:
             await self.respond_to_msg()
@@ -494,7 +491,7 @@ class WebSocketHandler():
 
     async def debug(self, msg: str):
         print('DEBUG', msg)
-        if self.DEBUG:
+        if self.app_state.settings.debug:
             self.app_state.messages.append(Message(role='debug', content=msg))
             await self.send_state()
 
