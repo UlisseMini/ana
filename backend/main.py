@@ -403,6 +403,9 @@ class WebSocketHandler():
         cmds = ['/clear', '/checkin', '/activity', '/fastfwd', '/debug']
         if msg in cmds:
             self.app_state.messages.pop()
+
+            debug = self.app_state.settings.debug
+            self.app_state.settings.debug = True
             if msg == '/clear':
                 args = msg.split(' ')
                 try:
@@ -419,7 +422,8 @@ class WebSocketHandler():
                 await self.fast_forward()
                 await self.check_in()
             elif msg == '/debug':
-                self.app_state.settings.debug = True
+                debug = True
+            self.app_state.settings.debug = debug
 
             await self.send_state()
         else:
