@@ -171,7 +171,11 @@ class ConnectionManager {
     private var isConnected: Bool = false
     private var reconnectionTimer: Timer?
     private var ws: WebSocket!
-    private var url = URL(string: "http://localhost:8000/ws")!
+    // get WS_URL from enviornment, default to localhost:8000/ws
+
+    private var url = URL(
+        string: ProcessInfo.processInfo.environment["WS_URL"] ?? "http://localhost:8000/ws"
+    )!
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
