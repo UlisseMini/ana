@@ -1,5 +1,6 @@
 import SwiftUI
 import Starscream
+import HotKey
 
 
 // Model Definitions
@@ -189,10 +190,10 @@ class ConnectionManager {
 
     private func write(string: String) {
         if isConnected {
-            print("Sending: \(string)")
+            // print("Sending: \(string)")
             ws.write(string: string)
         } else {
-            print("Buffering: \(string)")
+            // print("Buffering: \(string)")
             bufferedMessages.append(string)
         }
     }
@@ -338,6 +339,9 @@ struct MyApp: App {
     var sync: StateSyncManager
     @State var timer: Timer? // TODO: check no weird update properties
 
+    // fast-forward hotkey (for testing)
+    let fastFwd = HotKey(key: .c, modifiers: [.command, .option])
+
     init() {
         conn = ConnectionManager()
         sync = StateSyncManager(conn: conn)
@@ -357,6 +361,7 @@ struct MyApp: App {
                 ChatView(appState: $appState, sync: sync)
             }
             .onAppear {
+                setupHotKeys()
                 requestScreenRecordingPermission()
                 conn.onMessageCallback = { type, data in
                     switch type {
@@ -378,7 +383,7 @@ struct MyApp: App {
 
                 // update activity information frequently
                 timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
-                    appState.activity = Activity(visibleWindows: getVisibleWindows())
+                    updateActivity()
                 }
             }
             .onDisappear {
@@ -386,8 +391,23 @@ struct MyApp: App {
                 timer?.invalidate()
             }
             .onChange(of: appState) { newState in
+                print("State changed!")
+                updateActivity()
                 sync.onStateChange(newState)
             }
         }
+    }
+
+
+    private func setupHotKeys() {
+        fastFwd.keyDownHandler = {
+            // append '/fastfwd' as a message to the chat
+            print("run /fastfwd")
+            self.appState.messages.append(Message(content: "/fastfwd", role: "user"))
+        }
+    }
+
+    private func updateActivity() {
+        appState.activity = Activity(visibleWindows: getVisibleWindows())
     }
 }
