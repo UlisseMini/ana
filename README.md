@@ -2,7 +2,7 @@
 
 _The AI that helps you achieve your goals._
 
-![Example of the user being interrupted with a notification during a YouTube video](images/example1.png)
+![](images/example1.png)
 
 Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features!
 
@@ -10,9 +10,21 @@ Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features
 
 Download the `.app.zip` release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page, unzip it, right click and press "Open"
 
-Tell the AI when to interrupt you, e.g.
+Allow screen recording permission (required for the AI to watch you!)
 
-![Example setup conversation where user asks to be interrupted when on discord during work hours, except for EleutherAI which is necessary for research](images/setup1.png)
+![](images/setup0.png)
+
+Then tell the AI when to interrupt you, for example:
+
+![](images/setup1.png)
+
+And make sure to either disable D&D or add an exception for BossGPT! `System Settings > Do Not Disturb` and add an exception.
+
+![](images/setup3.png)
+
+You can also set up open on login if you want!
+
+![](images/setup2.png)
 
 After you configure that the AI will check in on you every 10 minutes. To test it, you can "fast-forward" by pressing option+command+c to trigger a check-in immediately on the currently visible windows.
 
