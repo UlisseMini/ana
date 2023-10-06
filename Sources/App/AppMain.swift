@@ -110,56 +110,7 @@ struct SettingsView: View {
     @Binding var settings: Settings
 
     var body: some View {
-        VStack {
-            HStack {
-                Text("Trigger regex")
-                    .frame(maxWidth: .infinity)
-                Text("Response")
-                    .frame(maxWidth: .infinity)
-            }
-            .font(.headline)
-            .padding([.top, .horizontal])
-            
-            List {
-                ForEach(settings.prompts.indices, id: \.self) { index in
-                    HStack {
-                        TextEditor(text: $settings.prompts[index].trigger)
-                            // .frame(minHeight: 100)
-                            .padding(4)
-                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
-                        
-                        TextEditor(text: $settings.prompts[index].response)
-                            // .frame(minHeight: 100)
-                            .padding(4)
-                            .background(RoundedRectangle(cornerRadius: 4).stroke(Color.gray))
-                    }
-                    .padding([.vertical], 8)
-                }
-                .onDelete(perform: deleteItem) // TODO: Better delete
-                .onMove(perform: moveItem)
-            }
-        }
-        .padding()
-        .toolbar(content: {
-            HStack {
-                Button(action: addItem) {
-                    Label("Add", systemImage: "plus")
-                }
-            }
-        })
-    }
-
-    private func addItem() {
-        let newItem = PromptPair(trigger: "", response: "")
-        settings.prompts.append(newItem)
-    }
-
-    private func deleteItem(at offsets: IndexSet) {
-        settings.prompts.remove(atOffsets: offsets)
-    }
-
-    private func moveItem(from source: IndexSet, to destination: Int) {
-        settings.prompts.move(fromOffsets: source, toOffset: destination)
+        Text("TODO")
     }
 }
 
