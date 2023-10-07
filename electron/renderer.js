@@ -1,9 +1,3 @@
-console.log("jeez")
-
-// const WebSocket = require('ws');
-
-console.log("wtf is wrong with you")
-
 const socket = new WebSocket('ws://localhost:8000/ws');
 
 
@@ -22,44 +16,78 @@ const initialAppState = {
     }
 };
 
-console.log("boopie")
-
 socket.onopen = function (event) {
     socket.send(JSON.stringify({
         type: 'state',
         data: initialAppState
     }));
-    document.getElementById('status').textContent = 'Connected';
+    console.log("Socket connected")
 };
 
 let appState = initialAppState;
 
 socket.onmessage = function (event) {
+    console.log("Socket sent message")
     updateUI(JSON.parse(event.data))
 };
 
 socket.onclose = function (event) {
-    console.log("Websocket closed")
     if (event.wasClean) {
-        document.getElementById('status').textContent = 'Connection closed cleanly';
+        console.log('Socket connection closed cleanly');
     } else {
-        document.getElementById('status').textContent = 'Connection died';
+        console.log('Socket connection died');
     }
 };
 
 socket.onerror = function (error) {
-    console.log(error)
-    document.getElementById('status').textContent = 'Error: ' + error.message;
+    console.log("Socket error: ", error.message)
 };
 
-function updateUI(appState) {
-    const messages = appState.data.messages
+function updateUI(msg) {
+    if (msg['type'] != 'state') throw new Error("bad msg type: ", msg["type"])
+    appState = msg['data']
+
+    const root = document.querySelector("#root")
+    root.innerHTML = "";
+
+    // Render messages
+    const messages = appState.messages
     let innerHTML = ""
     for (const message of messages) {
         const { role, content } = message;
         innerHTML += (
-            `<p>${content}</p>`
+            `<p class="message ${role}">${content}</p>`
         )
     }
-    document.querySelector("#root").innerHTML = innerHTML;
+    const messageContainer = document.createElement("div")
+    messageContainer.className = "message-container"
+    messageContainer.innerHTML = innerHTML
+    root.appendChild(messageContainer);
+
+    // Render chatbox
+    const input = document.createElement("textarea")
+    input.className = "chatbox"
+    input.rows = 1;
+    input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            const newMessage = {
+                "role": "user",
+                "content": input.value,
+                "function_call": null,
+            }
+
+            appState.messages.push(newMessage)
+
+            socket.send(JSON.stringify({
+                type: 'state',
+                data: appState,
+            }));
+        }
+    });
+
+
+
+    root.appendChild(input)
+
 }
