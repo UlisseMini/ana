@@ -14,7 +14,7 @@ const initialAppState = {
     settings: {
         prompts: [],
         checkInInterval: 600,  // An initial value, you'd want to set this to something meaningful
-        timezone: "EDT",  // An empty string, but you'd probably want to provide a real initial value
+        timezone: "America/New_York",  // An empty string, but you'd probably want to provide a real initial value
         debug: false
     },
     activity: {
@@ -32,8 +32,10 @@ socket.onopen = function (event) {
     document.getElementById('status').textContent = 'Connected';
 };
 
+let appState = initialAppState;
+
 socket.onmessage = function (event) {
-    console.log('Message from server:', event.data);
+    updateUI(JSON.parse(event.data))
 };
 
 socket.onclose = function (event) {
@@ -48,3 +50,14 @@ socket.onerror = function (error) {
     document.getElementById('status').textContent = 'Error: ' + error.message;
 };
 
+function updateUI(appState) {
+    const messages = appState.data.messages
+    let innerHTML = ""
+    for (const message of messages) {
+        const { role, content } = message;
+        innerHTML += (
+            `<p>${content}</p>`
+        )
+    }
+    document.querySelector("#root").innerHTML = innerHTML;
+}
