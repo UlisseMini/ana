@@ -1,21 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
+
 body {
-    font-family: sans-serif;
+    font-family: "Inter", sans-serif;
+    font-size: larger;
+    box-sizing: border-box;
+    margin: 0;
 }
 
 .message {
     display: inline-block;
     max-width: 80%;
-    margin: 10px;
+    margin: 10px 0;
     padding: 15px 30px;
     border-radius: 20px;
     color: white;
-    font-size: 16px;
     line-height: 1.5;
     position: relative;
 }
 
 .message.system {
-    background-color: #65a30d;
+    background-color: #5BC236;
     align-self: flex-end;
 }
 
@@ -25,7 +29,7 @@ body {
 }
 
 .message.user {
-    background-color: #0ea5e9;
+    background-color: #007AFF;
     align-self: flex-end;
 }
 
@@ -35,7 +39,7 @@ body {
 }
 
 /* tail-like effects on bubbles, before pseudo-elements */
-.message.assistant::before {
+/* .message.assistant::before {
     content: "";
     position: absolute;
     left: -14px;
@@ -44,7 +48,7 @@ body {
     height: 0;
     border-style: solid;
     border-width: 10px 20px 10px 0;
-    border-color: transparent #711e1e transparent transparent;
+    border-color: transparent #78716c transparent transparent;
 }
 
 .message.system::before, .message.user::before, .message.debug::before {
@@ -56,9 +60,15 @@ body {
     height: 0;
     border-style: solid;
     border-width: 10px 0 10px 20px;
-    border-color: transparent transparent transparent #3498db;
 }
 
+.message.system::before {
+    border-color: transparent transparent transparent #5BC236;
+}
+
+.message.user::before {
+    border-color: transparent transparent transparent #007AFF;
+} */
 
 .message-container {
     display: flex;
@@ -69,8 +79,11 @@ body {
     height: 100%;
 }
 
-
 .chatbox {
     font-family: inherit;
-    width: 100%;
+    font-size: inherit;
+    border-radius: 9999px;
+    padding: 5px 20px;
+    margin-top: 32px;
+    width: 90%;
 }
