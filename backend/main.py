@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 import sqlite3
 import os
@@ -253,7 +253,12 @@ class WebSocketHandler():
         await self.ws.accept()
 
         while True:
-            msg = await self.receive(timeout=10)
+            try:
+                msg = await self.receive(timeout=10)
+            except WebSocketDisconnect:
+                print(f'client {self.user_id} disconnected')
+                return
+
             if not msg:
                 time_since_check_in = time.time() - self.last_check_in
                 if time_since_check_in > self.app_state.settings.check_in_interval:
