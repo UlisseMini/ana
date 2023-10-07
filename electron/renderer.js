@@ -1,6 +1,6 @@
 console.log("jeez")
 
-const WebSocket = require('ws');
+// const WebSocket = require('ws');
 
 console.log("wtf is wrong with you")
 
@@ -39,6 +39,7 @@ socket.onmessage = function (event) {
 };
 
 socket.onclose = function (event) {
+    console.log("Websocket closed")
     if (event.wasClean) {
         document.getElementById('status').textContent = 'Connection closed cleanly';
     } else {
@@ -47,6 +48,7 @@ socket.onclose = function (event) {
 };
 
 socket.onerror = function (error) {
+    console.log(error)
     document.getElementById('status').textContent = 'Error: ' + error.message;
 };
 
