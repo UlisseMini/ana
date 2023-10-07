@@ -16,6 +16,21 @@ const initialAppState = {
     }
 };
 
+
+// never mutate appState directly. only through the setAppState function.
+// this means appState updates will always be sent to the server.
+// this can be designed better but shrug works for now
+let appState = initialAppState;
+
+function setAppState(newAppState) {
+    appState = newAppState;
+    socket.send(JSON.stringify({
+        type: 'state',
+        data: newAppState,
+    }));
+}
+
+
 socket.onopen = function (event) {
     socket.send(JSON.stringify({
         type: 'state',
@@ -24,11 +39,25 @@ socket.onopen = function (event) {
     console.log("Socket connected")
 };
 
-let appState = initialAppState;
-
 socket.onmessage = function (event) {
     console.log("Socket sent message")
-    updateUI(JSON.parse(event.data))
+
+    const msg = JSON.parse(event.data)
+    switch (msg["type"]) {
+        case "state":
+            appState = msg.data;
+            updateUI();
+            break;
+
+        case "notification":
+            showNotification(msg.data);
+            break;
+
+        default:
+            console.warn("Invalid msg type received from socket: ", msg["type"])
+            break;
+
+    }
 };
 
 socket.onclose = function (event) {
@@ -43,10 +72,7 @@ socket.onerror = function (error) {
     console.log("Socket error: ", error.message)
 };
 
-function updateUI(msg) {
-    if (msg['type'] != 'state') throw new Error("bad msg type: ", msg["type"])
-    appState = msg['data']
-
+function updateUI() {
     const root = document.querySelector("#root")
     root.innerHTML = "";
 
@@ -77,17 +103,14 @@ function updateUI(msg) {
                 "function_call": null,
             }
 
-            appState.messages.push(newMessage)
-
-            socket.send(JSON.stringify({
-                type: 'state',
-                data: appState,
-            }));
+            setAppState({ ...appState, messages: [...appState.messages, newMessage] })
         }
     });
 
-
-
     root.appendChild(input)
+}
 
+function showNotification(notification) {
+    const { title, body } = notification
+    console.log(title, body)
 }
