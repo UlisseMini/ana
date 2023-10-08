@@ -79,13 +79,10 @@ body {
     flex-direction: column;
     align-items: flex-end;
     margin-bottom: 64px;
-}
-
-.chat-container {
     padding: 10px;
 }
 
-.chatbox {
+.input {
     font-family: inherit;
     font-size: inherit;
     border-radius: 9999px;
@@ -94,11 +91,11 @@ body {
     width: 100%;
 }
 
-.chatbox:focus {
+.input:focus {
     outline-width: 0;
 }
 
-.input-container {
+#input-container {
     width: 100%;
     position: fixed;
     bottom: 0;

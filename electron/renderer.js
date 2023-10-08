@@ -20,8 +20,6 @@ const initialAppState = {
 // never mutate appState directly. only through the setAppState function.
 // this means appState updates will always be sent to the server.
 // this can be designed better but shrug works for now
-let appState = initialAppState;
-
 function setAppState(newAppState) {
     appState = newAppState;
     socket.send(JSON.stringify({
@@ -46,7 +44,7 @@ socket.onmessage = function (event) {
     switch (msg["type"]) {
         case "state":
             appState = msg.data;
-            updateUI();
+            updateMessagesUI();
             break;
 
         case "notification":
@@ -72,9 +70,8 @@ socket.onerror = function (error) {
     console.log("Socket error: ", error.message)
 };
 
-function updateUI() {
-    const root = document.querySelector("#root")
-    root.innerHTML = "";
+function updateMessagesUI() {
+    const messagesContainer = document.querySelector("#messages-container")
 
     // Render messages
     const messages = appState.messages
@@ -85,17 +82,15 @@ function updateUI() {
             `<p class="message ${role}">${content}</p>`
         )
     }
-    const messagesContainer = document.createElement("div")
     messagesContainer.innerHTML = innerHTML
-    messagesContainer.id = "messages-container"
 
-    const chatContainer = document.createElement("div")
-    chatContainer.className = "chat-container"
-    chatContainer.appendChild(messagesContainer)
+    scrollToBottom();
+}
 
-    // Render chatbox
+function createTextbox() {
+    const inputContainer = document.getElementById("input-container");
     const input = document.createElement("textarea")
-    input.className = "chatbox"
+    input.className = "input"
     input.rows = 1;
     input.placeholder = "Message"
     input.addEventListener("keydown", function (event) {
@@ -120,13 +115,7 @@ function updateUI() {
             input.value = "";
         }
     });
-    const inputContainer = document.createElement("div");
-    inputContainer.className = "input-container"
     inputContainer.appendChild(input)
-
-    root.appendChild(chatContainer);
-    root.appendChild(inputContainer);
-    scrollToBottom();
 }
 
 function scrollToBottom() {
@@ -156,3 +145,12 @@ function showNotification(notification) {
         });
     }
 }
+
+
+function init() {
+    appState = initialAppState;
+    createTextbox();
+}
+
+// when the page loads, run the init function
+window.onload = init;
