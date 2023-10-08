@@ -6,9 +6,9 @@ all: buildapps
 
 buildapps:
 	mkdir -p dist
-	$(MAKE) buildapp ARCH=x86_64 WS_URL=$(WS_URL)
+	$(MAKE) release plist buildapp ARCH=x86_64 WS_URL=$(WS_URL)
 	rm -rf dist/Ana-x86_64.app && mv Ana.app dist/Ana-x86_64.app
-	$(MAKE) buildapp ARCH=arm64 WS_URL=$(WS_URL)
+	$(MAKE) release plist buildapp ARCH=arm64 WS_URL=$(WS_URL)
 	rm -rf dist/Ana-arm64.app && mv Ana.app dist/Ana-arm64.app
 
 	zip -r dist/Ana-x86_64.app.zip dist/Ana-x86_64.app
@@ -18,7 +18,7 @@ buildapps:
 
 
 # build app to Ana.app
-buildapp: release plist
+buildapp:
 	mkdir -p Ana.app/Contents/MacOS Ana.app/Contents/Resources
 	cp Ana Ana.app/Contents/MacOS/Ana
 	cp Info.plist Ana.app/Contents/Info.plist
@@ -47,7 +47,7 @@ plist:
 
 
 dev:
-	find Sources Package.swift | entr -rc sh -c "make debug -s && echo Signing... && codesign -s 'Apple Development' Ana && VERSION=$(VERSION) ./Ana"
+	find Sources Package.swift | entr -rc sh -c "make debug buildapp -s && ./Ana.app/Contents/MacOS/Ana"
 
 
 clean:
