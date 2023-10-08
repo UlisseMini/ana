@@ -85,29 +85,41 @@ function updateUI() {
             `<p class="message ${role}">${content}</p>`
         )
     }
-    const messageContainer = document.createElement("div")
-    messageContainer.className = "message-container"
-    messageContainer.innerHTML = innerHTML
-    root.appendChild(messageContainer);
+    const messagesContainer = document.createElement("div")
+    messagesContainer.innerHTML = innerHTML
+    messagesContainer.id = "messages-container"
+
+    const chatContainer = document.createElement("div")
+    chatContainer.className = "chat-container"
+    chatContainer.appendChild(messagesContainer)
 
     // Render chatbox
     const input = document.createElement("textarea")
     input.className = "chatbox"
     input.rows = 1;
+    input.placeholder = "Message"
     input.addEventListener("keydown", function (event) {
         if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
+
             const newMessage = {
                 "role": "user",
                 "content": input.value,
                 "function_call": null,
             }
 
+            // Update UI right away with new message
+            document.querySelector("#messages-container").innerHTML += (
+                `<p class="message user">${input.value}</p>`
+            )
+
             setAppState({ ...appState, messages: [...appState.messages, newMessage] })
         }
     });
+    chatContainer.appendChild(input);
 
-    root.appendChild(input)
+    root.appendChild(chatContainer);
+
 }
 
 function showNotification(notification) {

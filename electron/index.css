@@ -1,17 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter&display=swap');
 
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
 body {
     font-family: "Inter", sans-serif;
     font-size: larger;
-    box-sizing: border-box;
-    margin: 0;
 }
 
 .message {
     display: inline-block;
     max-width: 80%;
     margin: 10px 0;
-    padding: 15px 30px;
+    padding: 10px 20px;
     border-radius: 20px;
     color: white;
     line-height: 1.5;
@@ -70,20 +74,26 @@ body {
     border-color: transparent transparent transparent #007AFF;
 } */
 
-.message-container {
+#messages-container {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
+}
+
+.chat-container {
     padding: 10px;
-    overflow-y: auto;
-    height: 100%;
 }
 
 .chatbox {
     font-family: inherit;
     font-size: inherit;
     border-radius: 9999px;
+    border-width: 1.5px;
     padding: 5px 20px;
     margin-top: 32px;
-    width: 90%;
+    width: 100%;
+}
+
+.chatbox:focus {
+    outline-width: 0;
 }
