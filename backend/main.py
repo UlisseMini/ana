@@ -50,7 +50,7 @@ Ask the user what they're doing and why. Encourage them to do what they said the
 
 
 INITIAL_MESSAGE = """
-Nice to meet you! I'm BossGPT, your friendly assistant who helps you stay focused. I'll be checking in on you every {minutes} minutes.
+Nice to meet you! I'm Ana, your friendly assistant who helps you stay focused. I'll be checking in on you every {minutes} minutes.
 
 Can you tell me when to interrupt you? For example, you could say "When I'm on youtube between 9am and 5pm, unless I'm watching math videos."
 """.strip()
@@ -494,7 +494,7 @@ class WebSocketHandler():
 
             await self.send_state()
         if message and message.content:
-            await self.notify(title="BossGPT", body=message.content)
+            await self.notify(title="Ana", body=message.content)
         self.save_state()
 
 
