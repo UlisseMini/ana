@@ -5,7 +5,7 @@ Must have env vars: `STRIPE_API_KEY` (stripe secret key), `HOST` (URL to homepag
 For testing account & deployment account you need to do
 
 ```sh
-stripe prices update price_1NsGBhIWzZPN3tivtQmsVYPD --lookup-key "bossgpt-standard"
+stripe prices update price_1NsGBhIWzZPN3tivtQmsVYPD --lookup-key "ana-standard"
 ```
 
 In order to have lookup key right.

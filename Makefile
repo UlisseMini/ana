@@ -7,24 +7,24 @@ all: buildapps
 buildapps:
 	mkdir -p dist
 	$(MAKE) buildapp ARCH=x86_64 WS_URL=$(WS_URL)
-	rm -rf dist/BossGPT-x86_64.app && mv BossGPT.app dist/BossGPT-x86_64.app
+	rm -rf dist/Ana-x86_64.app && mv Ana.app dist/Ana-x86_64.app
 	$(MAKE) buildapp ARCH=arm64 WS_URL=$(WS_URL)
-	rm -rf dist/BossGPT-arm64.app && mv BossGPT.app dist/BossGPT-arm64.app
+	rm -rf dist/Ana-arm64.app && mv Ana.app dist/Ana-arm64.app
 
-	zip -r dist/BossGPT-x86_64.app.zip dist/BossGPT-x86_64.app
-	zip -r dist/BossGPT-arm64.app.zip dist/BossGPT-arm64.app
+	zip -r dist/Ana-x86_64.app.zip dist/Ana-x86_64.app
+	zip -r dist/Ana-arm64.app.zip dist/Ana-arm64.app
 
 	@printf "\nSuccessfully built $(VERSION) into dist\n"
 
 
-# build app to BossGPT.app
+# build app to Ana.app
 buildapp: release plist
-	mkdir -p BossGPT.app/Contents/MacOS BossGPT.app/Contents/Resources
-	cp BossGPT BossGPT.app/Contents/MacOS/BossGPT
-	cp Info.plist BossGPT.app/Contents/Info.plist
-	# cp -f icon.icns BossGPT.app/Contents/Resources/icon.icns
-	chmod +x BossGPT.app/Contents/MacOS/BossGPT
-	codesign -s "Apple Distribution" BossGPT.app || true
+	mkdir -p Ana.app/Contents/MacOS Ana.app/Contents/Resources
+	cp Ana Ana.app/Contents/MacOS/Ana
+	cp Info.plist Ana.app/Contents/Info.plist
+	# cp -f icon.icns Ana.app/Contents/Resources/icon.icns
+	chmod +x Ana.app/Contents/MacOS/Ana
+	codesign -s "Apple Distribution" Ana.app || true
 
 
 release:
@@ -35,7 +35,7 @@ debug:
 
 build:
 	arch -$(ARCH) sh -c 'swift build -c $(TARGET)'
-	cp .build/$(ARCH)-apple-macosx/$(TARGET)/bossgpt BossGPT
+	cp .build/$(ARCH)-apple-macosx/$(TARGET)/ana Ana
 
 
 plist:
@@ -47,11 +47,11 @@ plist:
 
 
 dev:
-	find Sources Package.swift | entr -rc sh -c "make debug -s && echo Signing... && codesign -s 'Apple Development' BossGPT && VERSION=$(VERSION) ./BossGPT"
+	find Sources Package.swift | entr -rc sh -c "make debug -s && echo Signing... && codesign -s 'Apple Development' Ana && VERSION=$(VERSION) ./Ana"
 
 
 clean:
-	rm -rf BossGPT BossGPT.app Info.plist
+	rm -rf Ana Ana.app Info.plist
 
 
 .PHONY: all build buildapp
