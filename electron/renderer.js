@@ -112,6 +112,7 @@ function updateUI() {
             document.querySelector("#messages-container").innerHTML += (
                 `<p class="message user">${input.value}</p>`
             )
+            scrollToBottom();
 
             setAppState({ ...appState, messages: [...appState.messages, newMessage] })
         }
@@ -120,6 +121,12 @@ function updateUI() {
 
     root.appendChild(chatContainer);
 
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    var docElement = document.documentElement;
+    docElement.scrollTop = docElement.scrollHeight;
 }
 
 function showNotification(notification) {
