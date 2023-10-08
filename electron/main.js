@@ -1,4 +1,12 @@
 const { app, BrowserWindow } = require('electron');
+const { ipcMain } = require('electron');
+const { getActivity } = require('./utils')
+
+
+ipcMain.on('get-activity', (event, cmd) => {
+	event.reply('activity', getActivity());
+});
+
 
 app.disableHardwareAcceleration();
 

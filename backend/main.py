@@ -1,20 +1,21 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-import sqlite3
-import os
-import json
-import httpx
-import time
 import asyncio
+import json
+import os
 import re
-from pydantic import BaseModel, ValidationError, Field
+import sqlite3
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
-import pytz
 
+import httpx
+import pytz
 # run source ../.env to get path variables
 from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ValidationError
+
 load_dotenv('../.env')
 
 
@@ -166,8 +167,20 @@ class Settings(BaseModel):
     debug: bool = False
 
 
-Window = dict
+class Window(BaseModel):
+    app_name: str
+    title: str
 
+    def __init__(self, **data):
+        # Transform the keys before passing them to the parent's __init__ method
+        if 'kCGWindowOwnerName' in data:
+            data['app_name'] = data.pop('kCGWindowOwnerName')
+        if 'kCGWindowName' in data:
+            data['title'] = data.pop('kCGWindowName')
+
+        super().__init__(**data)
+
+    
 class Activity(BaseModel):
     visible_windows: List[Window] = Field(..., alias='visibleWindows')
 

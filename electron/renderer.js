@@ -1,4 +1,14 @@
 const socket = new WebSocket('ws://localhost:8000/ws');
+const { ipcRenderer } = require('electron');
+
+
+function getActivity() {
+    ipcRenderer.send('get-activity');
+
+    ipcRenderer.on('activity', (event, output) => {
+        console.log('activity', output);
+    });
+}
 
 
 const initialAppState = {
@@ -24,6 +34,8 @@ let appState = initialAppState;
 
 function setAppState(newAppState) {
     appState = newAppState;
+    appState.activity = getActivity();
+
     socket.send(JSON.stringify({
         type: 'state',
         data: newAppState,
