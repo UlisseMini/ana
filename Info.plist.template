@@ -7,13 +7,13 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>en</string>
 		<key>CFBundleExecutable</key>
-		<string>BossGPT</string>
+		<string>Ana</string>
 		<key>CFBundleIdentifier</key>
-		<string>ulirocks.bossgpt</string>
+		<string>ulirocks.ana</string>
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>bossgpt</string>
+		<string>ana</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

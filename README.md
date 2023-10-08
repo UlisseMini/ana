@@ -1,4 +1,4 @@
-# BossGPT
+# Ana
 
 _The AI that helps you achieve your goals._
 
@@ -8,7 +8,7 @@ Please join our [Discord](https://discord.gg/JQnNyAZeFk) and ask us for features
 
 ## Installation instructions
 
-Download the `.app.zip` release from the [releases](https://github.com/UlisseMini/bossgpt/releases) page, unzip it, right click and press "Open"
+Download the `.app.zip` release from the [releases](https://github.com/UlisseMini/ana/releases) page, unzip it, right click and press "Open"
 
 Allow screen recording permission (required for the AI to watch you!)
 
@@ -18,7 +18,7 @@ Then tell the AI when to interrupt you, for example:
 
 ![](images/setup1.png)
 
-And make sure to either disable D&D or add an exception for BossGPT! `System Settings > Do Not Disturb` and add an exception.
+And make sure to either disable D&D or add an exception for Ana! `System Settings > Do Not Disturb` and add an exception.
 
 ![](images/setup3.png)
 
