@@ -118,10 +118,12 @@ function updateUI() {
             input.value = "";
         }
     });
-    chatContainer.appendChild(input);
+    const inputContainer = document.createElement("div");
+    inputContainer.className = "input-container"
+    inputContainer.appendChild(input)
 
     root.appendChild(chatContainer);
-
+    root.appendChild(inputContainer);
     scrollToBottom();
 }
 
