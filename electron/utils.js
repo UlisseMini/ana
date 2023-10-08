@@ -4,7 +4,7 @@ const util = require('util');
 const exec = util.promisify(execCb);
 
 // TODO: Fix this so it actually gets all visible windows
-// (currently just output of wmctrl -lx)
+// (currently just output of wmctrl -lx - more like all active.)
 async function getVisibleWindows() {
     try {
         const { stdout } = await exec('wmctrl -lx');
@@ -15,15 +15,12 @@ async function getVisibleWindows() {
             const rawName = rawClass.split('.')[0];
 
             // Prettify the window name by capitalizing the first letter
-            const windowName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+            const app = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
             // The window title is the last field, but can contain spaces
-            const windowTitle = parts.slice(4).join(' ');
+            const title = parts.slice(4).join(' ');
 
-            return {
-                windowName,
-                windowTitle
-            };
+            return { app, title };
         });
 
         return windows;
@@ -33,7 +30,7 @@ async function getVisibleWindows() {
 }
 
 async function getActivity() {
-    return { visibleWindows: getVisibleWindows() }
+    return { visibleWindows: await getVisibleWindows() }
 }
 
 module.exports = { getActivity }

@@ -1,15 +1,10 @@
 const socket = new WebSocket('ws://localhost:8000/ws');
-const { ipcRenderer } = require('electron');
 
-
-function getActivity() {
-    ipcRenderer.send('get-activity');
-
-    ipcRenderer.on('activity', (event, output) => {
-        console.log('activity', output);
-    });
-}
-
+// TODO: Remove. this shows it works before everything crashes due to
+// nodeIntegration: true -- weird electron bugs :(
+window.native.getActivity().then((activity) => {
+    alert(JSON.stringify(activity))
+})
 
 const initialAppState = {
     machineId: "mid", // An empty string, but you'd probably want to provide a real initial value
@@ -22,7 +17,7 @@ const initialAppState = {
         debug: false
     },
     activity: {
-        visibleWindows: []
+        visibleWindows: [{ app: 'Google Chrome', title: 'YouTube - 37 cutest cat videos of 2020' }]
     }
 };
 
@@ -32,7 +27,10 @@ const initialAppState = {
 // this can be designed better but shrug works for now
 function setAppState(newAppState) {
     appState = newAppState;
-    appState.activity = getActivity();
+    window.native.getActivity().then((activity) => {
+        console.log("activity", activity)
+        appState.activity = activity;
+    }).catch((e) => console.error(e))
 
     socket.send(JSON.stringify({
         type: 'state',
