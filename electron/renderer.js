@@ -102,6 +102,8 @@ function updateUI() {
         if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
 
+            if (!input.value) return;
+
             const newMessage = {
                 "role": "user",
                 "content": input.value,
