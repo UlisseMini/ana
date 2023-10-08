@@ -83,19 +83,28 @@ socket.onerror = function (error) {
     console.log("Socket error: ", error.message)
 };
 
+function h(tag, attributes, children) {
+    const element = document.createElement(tag)
+    for (const [key, value] of Object.entries(attributes)) {
+        element.setAttribute(key, value)
+    }
+    for (const child of children) {
+        element.append(child)
+    }
+    return element
+}
+
 function updateMessagesUI() {
     const messagesContainer = document.querySelector("#messages-container")
 
     // Render messages
     const messages = appState.messages
-    let innerHTML = ""
+    let children = []
     for (const message of messages) {
         const { role, content } = message;
-        innerHTML += (
-            `<p class="message ${role}">${content}</p>`
-        )
+        children.push(h("p", { class: `message ${role}` }, [content]))
     }
-    messagesContainer.innerHTML = innerHTML
+    messagesContainer.replaceChildren(...children)
 
     scrollToBottom();
 }
@@ -119,8 +128,8 @@ function createTextbox() {
             }
 
             // Update UI right away with new message
-            document.querySelector("#messages-container").innerHTML += (
-                `<p class="message user">${input.value}</p>`
+            document.querySelector("#messages-container").appendChild(
+                h("p", { class: "message user" }, [input.value])
             )
             scrollToBottom();
 
