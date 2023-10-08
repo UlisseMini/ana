@@ -20,7 +20,7 @@ body {
     color: white;
     line-height: 1.5;
     position: relative;
-    white-space: pre-line;
+    white-space: pre-wrap;
 }
 
 .message.system {
