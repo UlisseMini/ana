@@ -1,11 +1,5 @@
 const socket = new WebSocket('ws://localhost:8000/ws');
 
-// TODO: Remove. this shows it works before everything crashes due to
-// nodeIntegration: true -- weird electron bugs :(
-window.native.getActivity().then((activity) => {
-    alert(JSON.stringify(activity))
-})
-
 const initialAppState = {
     machineId: "mid", // An empty string, but you'd probably want to provide a real initial value
     username: "uid",  // An empty string, but you'd probably want to provide a real initial value
@@ -26,16 +20,25 @@ const initialAppState = {
 // this means appState updates will always be sent to the server.
 // this can be designed better but shrug works for now
 function setAppState(newAppState) {
-    appState = newAppState;
+    // never manually set activity
+
     window.native.getActivity().then((activity) => {
         console.log("activity", activity)
-        appState.activity = activity;
-    }).catch((e) => console.error(e))
+        appState = ({ ...newAppState, activity: activity });
 
-    socket.send(JSON.stringify({
-        type: 'state',
-        data: newAppState,
-    }));
+        socket.send(JSON.stringify({
+            type: 'state',
+            data: appState,
+        }));
+    }).catch((e) => console.error(e))
+}
+
+
+function updateActivity() {
+    window.native.getActivity().then((activity) => {
+        console.log("activity", activity)
+        setAppState({ ...appState, activity: activity });
+    }).catch((e) => console.error(e))
 }
 
 
@@ -160,6 +163,7 @@ function showNotification(notification) {
 function init() {
     appState = initialAppState;
     createTextbox();
+    setInterval(() => updateActivity(), 10 * 1000);
 }
 
 // when the page loads, run the init function
