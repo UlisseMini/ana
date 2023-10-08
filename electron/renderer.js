@@ -40,9 +40,9 @@ socket.onopen = function (event) {
 };
 
 socket.onmessage = function (event) {
-    console.log("Socket sent message")
-
     const msg = JSON.parse(event.data)
+    console.log("Socket sent message of type: ", msg.type)
+
     switch (msg["type"]) {
         case "state":
             appState = msg.data;
@@ -115,6 +115,7 @@ function updateUI() {
             scrollToBottom();
 
             setAppState({ ...appState, messages: [...appState.messages, newMessage] })
+            input.value = "";
         }
     });
     chatContainer.appendChild(input);
@@ -131,5 +132,23 @@ function scrollToBottom() {
 
 function showNotification(notification) {
     const { title, body } = notification
-    console.log(title, body)
+
+    // First, check for permission
+    if (Notification.permission === "granted") {
+        // If it's okay, let's create a notification
+        new Notification(title, {
+            body: body,
+            // icon: 'path_to_icon.png'
+        });
+    } else if (Notification.permission !== "denied") {
+        // If permissions haven't been granted or denied yet, request them
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                new Notification(title, {
+                    body: body,
+                    // icon: 'path_to_icon.png'
+                });
+            }
+        });
+    }
 }
