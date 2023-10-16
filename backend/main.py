@@ -9,7 +9,7 @@ import asyncio
 import re
 from pydantic import BaseModel, ValidationError, Field
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 import pytz
 
@@ -22,37 +22,28 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 HOST = os.environ["HOST"]
 
 
-SYSTEM_PROMPT = """
-You are a friendly assistant who responds with short 20 word texts. You write in a friendly, informal texting style as you would to a friend.
-""".strip()
-
-# TODO: Should be a default configurable by the users?
-CHECK_IN_PROMPT = f"""
-AUTOMATED MESSAGE: {{response}}
-""".strip()
-
+# Developed in playground.
+# TODO: Make configurable by users.
+SYSTEM_PROMPT = '''
+1. You are Ana. A friendly assistant who writes SHORT, INFORMAL, CONCISE and FRIENDLY text messages with NO FLUFF. Aim for ONE LINE messages when possible.
+2. When the user says what they're doing
+    * If it isn't clear what apps and sites should be allowed, then ask the user.
+    * If it is clear, explain back to the user your understanding of the conditions to use for deciding when to interrupt them. Give CONCRETE examples to show your understanding. At the end, ask if your understanding is accurate.
+3. If the user confirms your understanding, respond with ONE WORD ONLY. Otherwise incorporate any feedback into your understanding of when to interrupt. If no feedback was given, ask for it.
+4. When an [ACTIVITY REPORT] is given, do the following
+    * Start your message with """ followed by your step-by-step reasoning about if the user is on-task or not. For example: """The user said they were coding. YouTube - MrBeast is not coding related. Therefor the user should be interrupted."""
+    * If the user is off-task, follow this with your message to the user. If the user is on-task, simply say "Great work!" WITH NOTHING ELSE. For example: """[...] Therefor the user should not be interrupted.""" Great work!
+5. When interrupting, be empathetic and understanding. ASK MANY QUESTIONS. Help the user spend their time in a way their future self will be happy with.
+'''.strip()
 
 # TODO: Add reason?
-TRIGGER_PROMPT = """
-AUTOMATED MESSAGE: A user activity report is given below. Interrupt the user if the activity matches a rule the user gave for interrupting them. Otherwise call the function passing 'false'.
-
-{activity}
-""".strip()
-
-
-ON_TRIGGER_MESSAGE = """
-AUTOMATED MESSAGE: The user has been interrupted due to the following reasoning: "{reasoning}"
-
-Ask the user what they're doing and why. Encourage them to do what they said they wanted to do.
-
-{activity}
+CHECK_IN_PROMPT = """
+[ACTIVITY REPORT]: {activity}
 """.strip()
 
 
 INITIAL_MESSAGE = """
-Nice to meet you! I'm Ana, your friendly assistant who helps you stay focused. I'll be checking in on you every {minutes} minutes.
-
-Can you tell me when to interrupt you? For example, you could say "When I'm on youtube between 9am and 5pm, unless I'm watching math videos."
+Hi! I'm your assistant Ana. How would you like to spend your time right now?
 """.strip()
 
 app = FastAPI()
@@ -308,9 +299,9 @@ class WebSocketHandler():
         return get_activity_summary_from_db(self.db, start, end)
 
 
-    async def trigger_message(self) -> Optional[Message]:
+    async def trigger_messages(self) -> Optional[List[Message]]:
         """
-        If we should trigger, return the trigger message. Otherwise, return None.
+        Returns [activity_msg, trigger_msg] if we decide to trigger/interrupt the user.
         """
 
         last_n_seconds = self.app_state.settings.check_in_interval
@@ -320,7 +311,7 @@ class WebSocketHandler():
             await self.debug("Not enough activity recorded to trigger yet")
             return None
 
-        activity_msg = Message(role='user', content=TRIGGER_PROMPT.format(activity=activity))
+        activity_msg = Message(role='user', content=CHECK_IN_PROMPT.format(activity=activity))
         await self.debug(f"Trigger msg:\n{activity_msg.content}")
 
         resp = await openai.post(
@@ -328,47 +319,24 @@ class WebSocketHandler():
             json={
                 "model": "gpt-4",
                 "messages": self.dump_filtered_messages() + [activity_msg.model_dump()],
-                "functions": [{
-                    # this should be either True or False, always called.
-                    "name": "interrupt",
-                    "description": "Pass true to interrupt the user, or false not to",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Reasoning for interrupting (or not) followed by conclusion.",
-                            },
-                            "interrupt": {
-                                "type": "boolean",
-                                "description": "Whether to interrupt the user",
-                            }
-                        },
-                        "required": ["reasoning", "interrupt"],
-                    },
-                }],
-                "max_tokens": 200,
+                # "functions": [],
                 "temperature": 0,
             }
         )
         resp.raise_for_status()
         resp_data = resp.json()
         message = resp_data['choices'][0]['message']
-        args = None
-        if message.get("function_call") and message["function_call"]["name"] == 'interrupt':
-            try:
-                args = json.loads(message["function_call"]["arguments"])
-                await self.debug(f"raw args: {message['function_call']['arguments']}")
-            except json.JSONDecodeError:
-                pass
-        else:
-            await self.debug(f"no trigger call in response:\n{message}")
+        pattern = r'"""(?P<reasoning>.*?)(?=""")"""\s*(?P<message>.+)'
+        match = re.search(pattern, message['content'], re.DOTALL)
 
-        if args and args['interrupt']:
-            return Message(
-                role='user',
-                content=ON_TRIGGER_MESSAGE.format(activity=activity, reasoning=args['reasoning'])
-            )
+        if match:
+            trigger = not match.group('message').startswith("Great work")
+            await self.debug(f"Reasoning: {match.group('reasoning')}. Trigger: {trigger}")
+            if trigger:
+                return [activity_msg, Message(role='assistant', content=match.group("message"))]
+        else:
+            await self.debug(f"Trigger message didn't match pattern:\n{message['content']}")
+            return None
 
 
     # TODO: Use or remove
@@ -395,29 +363,29 @@ class WebSocketHandler():
 
     async def check_in(self):
         self.last_check_in = time.time()
-        message = await self.trigger_message()
-        if message:
-            self.app_state.messages.append(message)
-            await self.respond_to_msg()
-
+        messages = await self.trigger_messages()
+        if messages:
+            self.app_state.messages += messages
+            await self.send_state()
+            self.save_state()
 
     async def handle_msg(self):
         msg = self.app_state.messages[-1].content
         print(f'handling {msg}')
         # TODO: Document msgs automatically for the user
         cmds = ['/clear', '/checkin', '/activity', '/fastfwd', '/debug']
-        if msg in cmds:
+        if msg and any(msg.startswith(cmd) for cmd in cmds):
             self.app_state.messages.pop()
 
             debug = self.app_state.settings.debug
             self.app_state.settings.debug = True
-            if msg == '/clear':
+            if msg.startswith('/clear'):
                 args = msg.split(' ')
                 try:
                     self.app_state.messages = self.app_state.messages[:-int(args[1])]
                 except (IndexError, ValueError):
-                    self.app_state.messages = []
-                await self.send_state()
+                    self.app_state.messages = self.app_state.messages[:-2]
+
                 self.save_state()
             elif msg == '/checkin':
                 await self.check_in()
@@ -466,7 +434,7 @@ class WebSocketHandler():
         return prefix + activity
 
 
-    def dump_filtered_messages(self, roles=('user', 'assistant', 'function')):
+    def dump_filtered_messages(self, roles=('user', 'assistant', 'function', 'system')):
         "Dump messages for the OpenAI API"
         return [m.model_dump() for m in self.app_state.messages if m.role in roles]
 
@@ -484,10 +452,8 @@ class WebSocketHandler():
 
         message = None
         async for message in stream_completion({
-            # 3.5 wasn't able to follow the extremely hard instruction of "send short messages"
             "model": "gpt-4",
             "messages": self.dump_filtered_messages(),
-            "max_tokens": 1000, # will use much less
         }):
             if self.app_state.messages[-1] is not message:
                 self.app_state.messages.append(message)
