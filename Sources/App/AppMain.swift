@@ -371,6 +371,8 @@ struct MyApp: App {
             // append '/fastfwd' as a message to the chat
             print("run /fastfwd")
             self.appState.messages.append(Message(content: "/fastfwd", role: "user"))
+            // manually trigger the sync
+            sync.syncState(appState)
         }
     }
 
