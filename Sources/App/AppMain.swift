@@ -13,7 +13,7 @@ struct AppState: Codable, Equatable {
     var activity: Activity
 }
 
-struct Message: Codable, Equatable {
+struct Message: Codable, Equatable, Hashable {
     let content: String
     let role: String // user, assistant, or system
 }
@@ -67,8 +67,8 @@ struct ChatView: View {
 
     var body: some View {
         VStack {
-            List(0..<appState.messages.count, id: \.self) { i in
-                MessageView(message: appState.messages[i])
+            List(appState.messages.filter { showRole($0.role) }, id: \.self) { message in
+                MessageView(message: message)
             }
 
             HStack {
@@ -80,6 +80,10 @@ struct ChatView: View {
             }
             .padding()
         }
+    }
+
+    func showRole(_ role: String) -> Bool {
+        return appState.settings.debug || (role != "debug" && role != "system");
     }
 }
 

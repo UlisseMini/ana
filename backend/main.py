@@ -378,8 +378,6 @@ class WebSocketHandler():
         if msg and any(msg.startswith(cmd) for cmd in cmds):
             self.app_state.messages.pop()
 
-            debug = self.app_state.settings.debug
-            self.app_state.settings.debug = True
             if msg.startswith('/clear'):
                 args = msg.split(' ')
                 try:
@@ -396,8 +394,7 @@ class WebSocketHandler():
                 await self.fast_forward()
                 await self.check_in()
             elif msg == '/debug':
-                debug = True
-            self.app_state.settings.debug = debug
+                self.app_state.settings.debug = True
 
             await self.send_state()
         else:
