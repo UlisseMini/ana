@@ -1,20 +1,21 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-import sqlite3
-import os
-import json
-import httpx
-import time
 import asyncio
+import json
+import os
 import re
-from pydantic import BaseModel, ValidationError, Field
+import sqlite3
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
-import pytz
 
+import httpx
+import pytz
 # run source ../.env to get path variables
 from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ValidationError
+
 load_dotenv('../.env')
 
 
@@ -158,8 +159,20 @@ class Settings(BaseModel):
     debug: bool = False
 
 
-Window = dict
+class Window(BaseModel):
+    app: str
+    title: str
 
+    def __init__(self, **data):
+        # Transform the keys before passing them to the parent's __init__ method
+        if 'kCGWindowOwnerName' in data:
+            data['app'] = data.pop('kCGWindowOwnerName')
+        if 'kCGWindowName' in data:
+            data['title'] = data.pop('kCGWindowName')
+
+        super().__init__(**data)
+
+    
 class Activity(BaseModel):
     visible_windows: List[Window] = Field(..., alias='visibleWindows')
 
@@ -193,9 +206,8 @@ def get_activity_times(db, start: datetime, end: datetime):
         time_diff = round((times[i+1] - times[i]).seconds / 60)  # in minutes
 
         for win in activity[i].visible_windows:
-            ownerName, windowName = win['kCGWindowOwnerName'], win['kCGWindowName']
-            app_time[ownerName] += time_diff
-            title_time[ownerName][windowName] += time_diff
+            app_time[win.app] += time_diff
+            title_time[win.app][win.title] += time_diff
 
     # remove apps & titles with <1min activity time (noise)
     app_time = {app: t for app, t in app_time.items() if t > 1}
@@ -410,9 +422,8 @@ class WebSocketHandler():
         title_time = defaultdict(lambda: defaultdict(int))
         check_in_interval = self.app_state.settings.check_in_interval
         for win in activity.visible_windows:
-            ownerName, windowName = win['kCGWindowOwnerName'], win['kCGWindowName']
-            app_time[ownerName] = check_in_interval // 60
-            title_time[ownerName][windowName] = check_in_interval // 60
+            app_time[win.app] = check_in_interval // 60
+            title_time[win.app][win.title] = check_in_interval // 60
 
         # Get activity summary
         start = datetime.now(tz=pytz.timezone(self.app_state.settings.timezone))
@@ -426,7 +437,7 @@ class WebSocketHandler():
 
     def get_activity_text(self, prefix="The user's current visible windows are:\n- ") -> str:
         activity = '\n- '.join([
-            w['kCGWindowOwnerName'] + ' - ' + w['kCGWindowName'] for w in
+            w.app + ' - ' + w.title for w in
             self.app_state.activity.visible_windows
         ])
         return prefix + activity

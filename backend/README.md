@@ -1,3 +1,6 @@
+## To run the backend:
+`pip install -r requirements.txt` to install the requirements, make sure `uvicorn` is added to PATH, then run `uvicorn main:app` which should launch the server on `localhost:8000`. `OPENAI_API_KEY` is required.
+
 ## Stripe setup
 
 Must have env vars: `STRIPE_API_KEY` (stripe secret key), `HOST` (URL to homepage of app for redirects)
