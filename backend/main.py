@@ -168,6 +168,7 @@ class Activity(BaseModel):
 class AppState(BaseModel):
     machine_id: str = Field(..., alias='machineId')
     username: str
+    version: Optional[str] = None
     messages: List[Message]
     settings: Settings
     activity: Activity

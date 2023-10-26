@@ -8,6 +8,7 @@ import AVFoundation
 struct AppState: Codable, Equatable {
     var machineId: String
     var username: String
+    var version: String
 
     var messages: [Message]
     var settings: Settings
@@ -302,6 +303,7 @@ struct MyApp: App {
     @State var appState: AppState = AppState(
         machineId: getMachineId(),
         username: NSUserName(),
+        version: ProcessInfo.processInfo.environment["VERSION"] ?? "",
         messages: [],
         settings: Settings(
             prompts: [],
