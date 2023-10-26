@@ -1,6 +1,7 @@
 import SwiftUI
 import Starscream
 import HotKey
+import AVFoundation
 
 
 // Model Definitions
@@ -38,6 +39,10 @@ struct Settings: Codable, Equatable {
 struct Notification: Codable, Equatable {
     let title: String
     let body: String
+}
+
+struct Utterance: Codable, Equatable {
+    let text: String
 }
 
 // WebSocket Definitions
@@ -310,6 +315,8 @@ struct MyApp: App {
     var sync: StateSyncManager
     @State var timer: Timer? // TODO: check no weird update properties
 
+    private let synthesizer = AVSpeechSynthesizer()
+
     // fast-forward hotkey (for testing)
     let fastFwd = HotKey(key: .c, modifiers: [.command, .option])
 
@@ -345,6 +352,12 @@ struct MyApp: App {
                         let msg = try JSONDecoder().decode(WebSocketMessage<Notification>.self, from: data)
                         print("Received notification: \(msg.data)")
                         showNotification(title: msg.data.title, body: msg.data.body)
+                    case "utterance":
+                        let msg = try JSONDecoder().decode(WebSocketMessage<Utterance>.self, from: data)
+                        print("Speaking text: \(msg.data.text)")
+                        let utterance = AVSpeechUtterance(string: msg.data.text)
+                        synthesizer.speak(utterance)
+
                     default:
                         print("Unknown message type: \(type)")
                     }
