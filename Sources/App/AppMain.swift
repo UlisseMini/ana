@@ -96,21 +96,22 @@ struct ChatView: View {
 struct MessageView: View {
     let message: Message
 
+    private let lightGray = Color(red: 0.9, green: 0.9, blue: 0.9)
+
     var body: some View {
         HStack {
             if message.role != "assistant" { Spacer() }
             Text(message.content)
-                .padding(.vertical, 5)
-                .padding(.horizontal, 10)
-                .foregroundColor(.white)
+                .padding(10)
+                .foregroundColor(message.role == "assistant" ? Color.black : Color.white)
                 .background(
                     message.role == "user" ? Color.blue
-                    : message.role == "assistant" ? Color.gray
+                    : message.role == "assistant" ? lightGray
                     : message.role == "system" ? Color.green
                     : message.role == "debug" ? Color.purple
                     : Color.red
                 )
-                .cornerRadius(10)
+                .cornerRadius(15)
             if message.role == "assistant" { Spacer() }
         }
     }
