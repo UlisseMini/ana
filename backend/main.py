@@ -366,6 +366,8 @@ class WebSocketHandler():
         self.last_check_in = time.time()
         messages = await self.trigger_messages()
         if messages:
+            assert messages[-1].content, f"Empty trigger response msg: {messages[-1]}"
+            await self.notify(title="Ana", body=messages[-1].content)
             self.app_state.messages += messages
             await self.send_state()
             self.save_state()
