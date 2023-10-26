@@ -154,6 +154,7 @@ class PromptPair(BaseModel):
     response: str
 
 class Settings(BaseModel):
+    # TODO: Remove prompts (legacy)
     prompts: List[PromptPair]
     check_in_interval: int = Field(..., alias='checkInInterval')
     timezone: str
@@ -294,17 +295,21 @@ class WebSocketHandler():
                     self.save_state()
 
                 if not self.app_state.messages:
-                    m = self.app_state.settings.check_in_interval // 60
-                    self.app_state.messages += [
-                        Message(role='system', content=SYSTEM_PROMPT.format(checkin=m)),
-                        Message(role='assistant', content=INITIAL_MESSAGE.format(minutes=m))
-                    ]
+                    self.app_state.messages += self.initial_messages()
                     await self.send_state()
 
 
                 # handle messages
                 if self.app_state.messages and self.app_state.messages[-1].role == 'user':
                     await self.handle_msg()
+
+
+    def initial_messages(self):
+        m = self.app_state.settings.check_in_interval // 60
+        return [
+            Message(role='system', content=SYSTEM_PROMPT.format(checkin=m)),
+            Message(role='assistant', content=INITIAL_MESSAGE.format(minutes=m))
+        ]
 
 
     async def get_activity_summary(self, start: datetime, end: datetime) -> str:
@@ -411,7 +416,10 @@ class WebSocketHandler():
                 try:
                     self.app_state.messages = self.app_state.messages[:-int(args[1])]
                 except (IndexError, ValueError):
-                    self.app_state.messages = self.app_state.messages[:-2]
+                    self.app_state.messages = []
+
+                if len(self.app_state.messages) < 2:
+                    self.app_state.messages = self.initial_messages()
 
                 self.save_state()
             elif msg == '/checkin':
