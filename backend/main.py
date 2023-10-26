@@ -7,6 +7,7 @@ import httpx
 import time
 import asyncio
 import re
+import random
 from pydantic import BaseModel, ValidationError, Field
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -220,6 +221,15 @@ def get_activity_summary_from_db(db, start: datetime, end: datetime) -> str:
     return get_activity_summary_from_times(app_time, title_time, start, end)
 
 
+ENCOURAGEMENTS = [
+    "You're doing great!!!",
+    "Great work!",
+    "Keep it up! YOU CAN DO IT!",
+    "One step at a time! You can do it!",
+    "You can do it! Keep pushing forward!"
+    "Small steps lead to big results!",
+]
+
 
 class WebSocketHandler():
     """
@@ -233,7 +243,10 @@ class WebSocketHandler():
         self.db = db
         self.app_state: AppState
         self.user_id = None
+
+        # TODO: These should be persisted in the database
         self.last_check_in = 0
+        self.last_interrupt = time.time()
 
         # for fast-forward: a (time, activity_summary) pair
         self.fastfwd: Optional[Tuple[datetime, str]] = None
@@ -329,12 +342,22 @@ class WebSocketHandler():
         message = resp_data['choices'][0]['message']
         pattern = r'"""(?P<reasoning>.*?)(?=""")"""\s*(?P<message>.+)'
         match = re.search(pattern, message['content'], re.DOTALL)
+        # TODO: Figure out why I'm getting no reasoning in some cases.
 
         if match:
+            trigger_msg = Message(role='assistant', content=match.group("message"))
             trigger = not match.group('message').startswith("Great work")
-            await self.debug(f"Reasoning: {match.group('reasoning')}. Trigger: {trigger}")
-            if trigger:
-                return [activity_msg, Message(role='assistant', content=match.group("message"))]
+            # also trigger every 30 minutes the user remains focused / no interrupting is necessary
+            trigger_encourage = time.time() - self.last_interrupt > 60*30
+            await self.debug(f"Reasoning: {match.group('reasoning')}. Trigger: {trigger} Encourage: {trigger_encourage}")
+
+
+            if trigger_encourage:
+                trigger_msg = Message(role='assistant', content=random.choice(ENCOURAGEMENTS))
+
+            if trigger or trigger_encourage:
+                self.last_interrupt = time.time()
+                return [activity_msg, trigger_msg]
         else:
             await self.debug(f"Trigger message didn't match pattern:\n{message['content']}")
             return None
