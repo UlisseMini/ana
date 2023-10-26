@@ -7,12 +7,12 @@ all: plist icons buildapps
 buildapps:
 	mkdir -p dist
 	$(MAKE) release buildapp ARCH=x86_64 WS_URL=$(WS_URL)
-	rm -rf dist/Ana-x86_64.app && mv Ana.app dist/Ana-x86_64.app
-	$(MAKE) release buildapp ARCH=arm64 WS_URL=$(WS_URL)
-	rm -rf dist/Ana-arm64.app && mv Ana.app dist/Ana-arm64.app
+	zip -r dist/Ana-x86_64.app.zip Ana.app
 
-	zip -r dist/Ana-x86_64.app.zip dist/Ana-x86_64.app
-	zip -r dist/Ana-arm64.app.zip dist/Ana-arm64.app
+	$(MAKE) release buildapp ARCH=arm64 WS_URL=$(WS_URL)
+	zip -r dist/Ana-arm64.app.zip Ana.app
+
+	rm -rf Ana.app
 
 	@printf "\nSuccessfully built $(VERSION) into dist\n"
 
