@@ -10,6 +10,8 @@
 		<string>Ana</string>
 		<key>CFBundleIdentifier</key>
 		<string>ulirocks.ana</string>
+		<key>CFBundleIconFile</key>
+		<string>Ana</string>
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>

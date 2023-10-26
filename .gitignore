@@ -1,10 +1,12 @@
 # random shit
-BossGPT
-BossGPT.app
+Ana
+Ana.app
+Ana.icns
 todo*
 .env
 dist
 random
+.vscode
 
 # backend shit
 db.sqlite3
