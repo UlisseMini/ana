@@ -98,7 +98,7 @@ struct MessageView: View {
 
     var body: some View {
         HStack {
-            Spacer()
+            if message.role != "assistant" { Spacer() }
             Text(message.content)
                 .padding(.vertical, 5)
                 .padding(.horizontal, 10)
@@ -111,6 +111,7 @@ struct MessageView: View {
                     : Color.red
                 )
                 .cornerRadius(10)
+            if message.role == "assistant" { Spacer() }
         }
     }
 }
