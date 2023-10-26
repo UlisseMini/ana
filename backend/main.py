@@ -31,7 +31,7 @@ SYSTEM_PROMPT = '''
 3. When the user says what they're doing
     * If it isn't clear what apps and sites should be allowed, then ask the user.
     * If it is clear, explain back to the user your understanding of the conditions to use for deciding when to interrupt them. Give CONCRETE examples to show your understanding. At the end, ask if your understanding is accurate.
-4. If the user confirms your understanding, respond with ONE WORD ONLY. Otherwise incorporate any feedback into your understanding of when to interrupt. If no feedback was given, ask for it.
+4. If the user confirms your understanding, reply "Great! I'll check in on you every {checkin} minutes and message you if you seem distracted! (And If you want to test me, command+option+c forces a checkin!)"
 5. When an [ACTIVITY REPORT] is given, do the following
     * Start your message with """ followed by your hidden step-by-step reasoning about if the user is on-task or not. For example: """The user said they were coding. YouTube - MrBeast is not coding related. Therefor the user should be interrupted."""
     * If the user is off-task, follow this with your message to the user. If the user is on-task, simply say "Great work!" WITH NOTHING ELSE. For example: """[...] Therefor the user should not be interrupted.""" Great work!
@@ -296,7 +296,7 @@ class WebSocketHandler():
                 if not self.app_state.messages:
                     m = self.app_state.settings.check_in_interval // 60
                     self.app_state.messages += [
-                        Message(role='system', content=SYSTEM_PROMPT),
+                        Message(role='system', content=SYSTEM_PROMPT.format(checkin=m)),
                         Message(role='assistant', content=INITIAL_MESSAGE.format(minutes=m))
                     ]
                     await self.send_state()
@@ -469,7 +469,7 @@ class WebSocketHandler():
         "Respond to the most recent user message in app_state.messages"
 
         # prepend system prompt if necessary
-        sys_prompt = SYSTEM_PROMPT
+        sys_prompt = SYSTEM_PROMPT.format(checkin=self.app_state.settings.check_in_interval//60)
         if self.app_state.messages[0].role == 'system':
             self.app_state.messages[0].content = sys_prompt
         else:
