@@ -146,8 +146,15 @@ class Message(BaseModel):
     role: str
     content: Optional[str] = None
     function_call: Optional[FunctionCall] = None
+    time: Optional[float] = time.time()
+
     def model_dump(self, **kwargs):
         return super().model_dump(exclude_none=True, **kwargs)
+
+    def openai_dump(self):
+        # model dump only the fields that openai needs
+        return self.model_dump(exclude={'time'})
+
 
 class PromptPair(BaseModel):
     trigger: str
@@ -340,7 +347,7 @@ class WebSocketHandler():
             "/v1/chat/completions",
             json={
                 "model": "gpt-4",
-                "messages": self.dump_filtered_messages() + [activity_msg.model_dump()],
+                "messages": self.dump_filtered_messages() + [activity_msg.openai_dump()],
                 # "functions": [],
                 "temperature": 0,
             }
@@ -471,7 +478,7 @@ class WebSocketHandler():
 
     def dump_filtered_messages(self, roles=('user', 'assistant', 'function', 'system')):
         "Dump messages for the OpenAI API"
-        return [m.model_dump() for m in self.app_state.messages if m.role in roles]
+        return [m.openai_dump() for m in self.app_state.messages if m.role in roles]
 
 
     async def respond_to_msg(self):

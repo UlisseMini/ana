@@ -17,7 +17,8 @@ struct AppState: Codable, Equatable {
 
 struct Message: Codable, Equatable, Hashable {
     let content: String
-    let role: String // user, assistant, or system
+    let role: String // user, assistant, debug or system
+    var time: Double? = Date().timeIntervalSince1970
 }
 
 struct PromptPair: Codable, Equatable {
@@ -75,9 +76,21 @@ struct ChatView: View {
 
     var body: some View {
         VStack {
-            List(appState.messages.filter { showRole($0.role) }, id: \.self) { message in
-                MessageView(message: message)
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(appState.messages.filter { showRole($0.role) }, id: \.self) { message in
+                        MessageView(message: message)
+                    }
+                    Color.clear.frame(height: 0).id("PaddingBottom")
+                }
+                .onChange(of: appState.messages.count) { _ in
+                    withAnimation { proxy.scrollTo("PaddingBottom", anchor: .bottom) }
+                }
+                .onAppear {
+                    withAnimation { proxy.scrollTo("PaddingBottom", anchor: .bottom) }
+                }
             }
+
 
             HStack {
                 TextField("New message", text: $newMessage)
