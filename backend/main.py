@@ -245,7 +245,7 @@ ENCOURAGEMENTS = [
     "Great work!",
     "Keep it up! YOU CAN DO IT!",
     "One step at a time! You can do it!",
-    "You can do it! Keep pushing forward!"
+    "You can do it! Keep pushing forward!",
     "Small steps lead to big results!",
 ]
 
