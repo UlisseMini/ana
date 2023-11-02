@@ -186,17 +186,18 @@ class AppState(BaseModel):
 
 
 
-def get_activity_times(db, start: datetime, end: datetime):
+def get_activity_times(user_id: int, db, start: datetime, end: datetime):
     """Get activity times. Start and end should be in the user's localtime."""
 
     cur = db.cursor()
     query = '''
     SELECT json_extract(state_json, '$.activity'), created_at
-    FROM app_states WHERE created_at BETWEEN ? and ? ORDER BY created_at ASC
+    FROM app_states WHERE created_at BETWEEN ? and ? AND user_id = ?
+    ORDER BY created_at ASC
     '''
     # convert start, end into UTC time (from local time) to match the database
     db_start, db_end = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
-    cur.execute(query, (db_start.strftime('%Y-%m-%d %H:%M:%S'), db_end.strftime('%Y-%m-%d %H:%M:%S')))
+    cur.execute(query, (db_start.strftime('%Y-%m-%d %H:%M:%S'), db_end.strftime('%Y-%m-%d %H:%M:%S'), user_id))
 
     rows = cur.fetchall()
     activity = [Activity.model_validate_json(a) for a, _ in rows]
@@ -234,8 +235,8 @@ def get_activity_summary_from_times(app_time, title_time, start: datetime, end: 
 
 
 # TODO: Add merging of similar titled apps, possibly summarizing by an LLM
-def get_activity_summary_from_db(db, start: datetime, end: datetime) -> str:
-    app_time, title_time = get_activity_times(db, start, end)
+def get_activity_summary_from_db(user_id: int, db, start: datetime, end: datetime) -> str:
+    app_time, title_time = get_activity_times(user_id, db, start, end)
     return get_activity_summary_from_times(app_time, title_time, start, end)
 
 
@@ -331,13 +332,17 @@ class WebSocketHandler():
             print(f'fast forwarding: fastfwd at {self.fastfwd[1]}')
             return self.fastfwd[1]
 
-        return get_activity_summary_from_db(self.db, start, end)
+        assert self.user_id is not None, f'no user id for {self.app_state}'
+        return get_activity_summary_from_db(self.user_id, self.db, start, end)
 
 
     async def trigger_messages(self) -> Optional[List[Message]]:
         """
         Returns [activity_msg, trigger_msg] if we decide to trigger/interrupt the user.
         """
+        if self.user_id is None:
+            print("Not registered yet, can't trigger")
+            return None
 
         last_n_seconds = self.app_state.settings.check_in_interval
         now = datetime.now(tz=pytz.timezone(self.app_state.settings.timezone))
