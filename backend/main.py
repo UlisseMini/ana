@@ -159,6 +159,8 @@ class Settings(BaseModel):
     check_in_interval: int = Field(..., alias='checkInInterval')
     timezone: str
     debug: bool = False
+    popup: bool = True
+    tts: bool = False
 
 
 Window = dict
@@ -259,7 +261,6 @@ class WebSocketHandler():
 
     async def run(self):
         await self.ws.accept()
-
         while True:
             try:
                 msg = await self.receive(timeout=10)
@@ -267,14 +268,7 @@ class WebSocketHandler():
                 print(f'client {self.user_id} disconnected')
                 return
 
-            if not msg:
-                time_since_check_in = time.time() - self.last_check_in
-                if time_since_check_in > self.app_state.settings.check_in_interval:
-                    await self.check_in()
-
-                continue
-
-            if msg['type'] == 'state':
+            if msg and msg['type'] == 'state':
                 print('got state from client')
                 try:
                     self.app_state = AppState.model_validate(msg['data'])
@@ -302,6 +296,13 @@ class WebSocketHandler():
                 # handle messages
                 if self.app_state.messages and self.app_state.messages[-1].role == 'user':
                     await self.handle_msg()
+
+
+            self.app_state.settings.check_in_interval = 600
+
+            time_since_check_in = time.time() - self.last_check_in
+            if time_since_check_in > self.app_state.settings.check_in_interval:
+                await self.check_in()
 
 
     def initial_messages(self):
@@ -499,8 +500,11 @@ class WebSocketHandler():
         self.save_state()
 
     async def speak(self, text: str):
-        print(f"Sending speak: {text}")
-        await self.ws.send_json({"type": "utterance", "data": {"text": text}})
+        if self.app_state.settings.tts:
+            print(f"Sending speak: {text}")
+            await self.ws.send_json({"type": "utterance", "data": {"text": text}})
+        else:
+            print(f"Skipping speak: {text} -- tts=False")
 
 
     async def debug(self, msg: str):

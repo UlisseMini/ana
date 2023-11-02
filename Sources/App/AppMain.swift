@@ -34,6 +34,8 @@ struct Settings: Codable, Equatable {
     var checkInInterval: Int
     var timezone: String
     var debug: Bool
+    var popup: Bool
+    var tts: Bool
 }
 
 
@@ -125,6 +127,8 @@ struct SettingsView: View {
             // TODO: Add more settings
             Section(header: Text("Configuration")) {
                 Toggle("Debug Mode", isOn: $settings.debug)
+                Toggle("Popup on notify", isOn: $settings.popup)
+                Toggle("Text to speech", isOn: $settings.tts)
             }
         }
     }
@@ -153,6 +157,7 @@ class ConnectionManager {
         self.attemptReconnect()
     }
 
+    // TODO: Track date of attempted send etc. to avoid race conditions with the server
     func send<T>(_ msg: WebSocketMessage<T>) {
         if let data = try? encoder.encode(msg),
             let text = String(data: data, encoding: .utf8) {
@@ -311,7 +316,9 @@ struct MyApp: App {
             prompts: [],
             checkInInterval: 600,
             timezone: TimeZone.current.identifier,
-            debug: false
+            debug: false,
+            popup: true,
+            tts: false
         ), // TODO: make checkInInterval configurable
         activity: Activity(visibleWindows: getVisibleWindows())
     )
@@ -355,6 +362,7 @@ struct MyApp: App {
                     case "notification":
                         let msg = try JSONDecoder().decode(WebSocketMessage<Notification>.self, from: data)
                         print("Received notification: \(msg.data)")
+                        if (self.appState.settings.popup) { popup() }
                         showNotification(title: msg.data.title, body: msg.data.body)
                     case "utterance":
                         let msg = try JSONDecoder().decode(WebSocketMessage<Utterance>.self, from: data)
@@ -386,13 +394,13 @@ struct MyApp: App {
         }
     }
 
-
     private func setupHotKeys() {
         fastFwd.keyDownHandler = {
+            // update activity
+            updateActivity()
             // append '/fastfwd' as a message to the chat
-            print("run /fastfwd")
             self.appState.messages.append(Message(content: "/fastfwd", role: "user"))
-            // manually trigger the sync
+            // manually trigger the sync (onChange doesn't fire on .append)
             sync.syncState(appState)
         }
     }

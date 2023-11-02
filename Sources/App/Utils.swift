@@ -140,3 +140,10 @@ func showNotification(
         }
     }
 }
+
+func popup() {
+    if let window = NSApplication.shared.windows.first {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+}
