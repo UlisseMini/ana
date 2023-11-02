@@ -10,7 +10,7 @@ import re
 import random
 from pydantic import BaseModel, ValidationError, Field
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 import pytz
 
@@ -187,16 +187,22 @@ class AppState(BaseModel):
 
 
 def get_activity_times(db, start: datetime, end: datetime):
+    """Get activity times. Start and end should be in the user's localtime."""
+
     cur = db.cursor()
     query = '''
     SELECT json_extract(state_json, '$.activity'), created_at
     FROM app_states WHERE created_at BETWEEN ? and ? ORDER BY created_at ASC
     '''
-    cur.execute(query, (start.strftime('%Y-%m-%d %H:%M:%S'), end.strftime('%Y-%m-%d %H:%M:%S')))
+    # convert start, end into UTC time (from local time) to match the database
+    db_start, db_end = start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+    cur.execute(query, (db_start.strftime('%Y-%m-%d %H:%M:%S'), db_end.strftime('%Y-%m-%d %H:%M:%S')))
 
     rows = cur.fetchall()
     activity = [Activity.model_validate_json(a) for a, _ in rows]
     times = [datetime.strptime(t, '%Y-%m-%d %H:%M:%S') for _, t in rows]
+    # convert times from utc to the same timezone as end
+    times = [t.replace(tzinfo=timezone.utc).astimezone(end.tzinfo) for t in times]
     times.append(end)
 
     app_time = defaultdict(int)
