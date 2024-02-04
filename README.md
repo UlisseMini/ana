@@ -1,4 +1,4 @@
-# Ana
+# <img src="./images/icon.png" width="40"> Ana
 
 _The AI that helps you achieve your goals._
 
